@@ -1,0 +1,45 @@
+"""Application settings and configuration."""
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Base paths
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+LOGS_DIR = BASE_DIR / "logs"
+
+# Create directories if they don't exist
+DATA_DIR.mkdir(exist_ok=True)
+LOGS_DIR.mkdir(exist_ok=True)
+
+# API Configuration
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+API_VERSION = "v1"
+API_DESKTOP_PATH = f"/api/{API_VERSION}/desktop"
+
+# Database Configuration
+DB_NAME = "thor_agent.db"
+DB_PATH = DATA_DIR / DB_NAME
+
+# Security Configuration
+APP_NAME = "ThorDesktopAgent"
+KEYRING_SERVICE_NAME = "ThorAgent"
+
+# JWT Configuration
+JWT_ACCESS_TOKEN_LIFETIME_MINUTES = 10
+JWT_REFRESH_TOKEN_LIFETIME_DAYS = 30
+
+# Logging Configuration
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+LOG_FILE = LOGS_DIR / "thor_agent.log"
+LOG_ROTATION = "10 MB"
+LOG_RETENTION = "30 days"
+
+# Application Configuration
+APP_VERSION = "1.0.0"
+WINDOW_TITLE = "Thor Desktop Agent"
+MIN_WINDOW_WIDTH = 400
+MIN_WINDOW_HEIGHT = 500

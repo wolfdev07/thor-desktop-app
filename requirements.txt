@@ -1,0 +1,39 @@
+# GUI Framework
+PySide6==6.10.1
+PySide6-Addons==6.10.1
+PySide6-Essentials==6.10.1
+
+# HTTP Client
+requests==2.32.5
+
+# WebSocket Client
+websockets==16.0
+
+# Device Fingerprinting
+py-cpuinfo==9.0.0
+getmac==0.9.5
+psutil==7.2.1
+
+# Secure Storage
+keyring==25.7.0
+cryptography==46.0.3
+
+# Database
+sqlalchemy==2.0.45
+sqlcipher3==0.6.2
+
+# JWT
+PyJWT==2.10.1
+
+# ZKTeco Library (para futuro)
+zklib==0.1.1
+pyzkaccess==1.1
+
+# Utilities
+python-dotenv==1.2.1
+
+# Build Tool
+pyinstaller==6.17.0
+
+# Logging
+loguru==0.7.3
