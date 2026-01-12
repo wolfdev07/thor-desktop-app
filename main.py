@@ -1,5 +1,7 @@
 """Thor Desktop Agent - Main application entry point."""
 import sys
+import asyncio
+from qasync import QEventLoop
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 from PySide6.QtCore import Qt
 
@@ -7,6 +9,7 @@ from config.settings import WINDOW_TITLE, APP_VERSION
 from ui.login_window import LoginWindow
 from ui.system_tray import SystemTray
 from services.auth_service import auth_service
+from services.websocket_manager import WebSocketManager
 from utils.logger import app_logger
 from models import LoginResponse
 
@@ -16,8 +19,10 @@ class ThorDesktopAgent:
     
     def __init__(self):
         self.app = None
+        self.loop = None
         self.login_window = None
         self.system_tray = None
+        self.ws_manager = None
         self.current_user = None
         
     def run(self):
@@ -27,10 +32,21 @@ class ThorDesktopAgent:
         self.app.setApplicationName(WINDOW_TITLE)
         self.app.setApplicationVersion(APP_VERSION)
         
-        # Enable high DPI support
-        self.app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
+        # Don't quit when last window closes (we have system tray)
+        self.app.setQuitOnLastWindowClosed(False)
+        
+        # Setup async event loop for Qt
+        self.loop = QEventLoop(self.app)
+        asyncio.set_event_loop(self.loop)
+        
+        # Enable high DPI support (skip deprecated warning)
+        # self.app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
         
         app_logger.info(f"Starting {WINDOW_TITLE} v{APP_VERSION}")
+        
+        # Initialize WebSocket manager
+        self.ws_manager = WebSocketManager()
+        self._setup_ws_handlers()
         
         # Initialize system tray
         self._init_system_tray()
@@ -54,11 +70,61 @@ class ThorDesktopAgent:
             # Not logged in, show login window
             self._show_login()
         
-        # Run application
-        exit_code = self.app.exec()
+        # Run application with async loop
+        with self.loop:
+            exit_code = self.loop.run_forever()
         
         app_logger.info("Application shutting down")
         return exit_code
+    
+    def _setup_ws_handlers(self):
+        """Setup WebSocket event handlers."""
+        self.ws_manager.connected.connect(self._on_ws_connected)
+        self.ws_manager.disconnected.connect(self._on_ws_disconnected)
+        self.ws_manager.checkin_received.connect(self._on_checkin)
+        self.ws_manager.verify_access_received.connect(self._on_verify_access)
+    
+    def _on_ws_connected(self):
+        """Handle WebSocket connection."""
+        app_logger.info("✅ Connected to Heimdall WebSocket")
+        self.system_tray.show_message(
+            "Heimdall Conectado",
+            "Conexión establecida con el servidor de eventos"
+        )
+    
+    def _on_ws_disconnected(self):
+        """Handle WebSocket disconnection."""
+        app_logger.warning("⚠️ Disconnected from Heimdall")
+    
+    def _on_checkin(self, data: dict):
+        """Handle check-in event.
+        
+        Args:
+            data: Check-in data
+        """
+        member_name = data.get('member_name', 'Unknown')
+        app_logger.info(f"🏋️ Check-in: {member_name}")
+        
+        # Show notification
+        self.system_tray.show_message(
+            "Check-in Detectado",
+            f"{member_name} ingresó al gimnasio"
+        )
+    
+    def _on_verify_access(self, data: dict):
+        """Handle verify access request.
+        
+        Args:
+            data: Verify access request data
+        """
+        member_name = data.get('member_name', 'Unknown')
+        app_logger.info(f"🔍 Verificación de acceso solicitada: {member_name}")
+        
+        # Show notification
+        self.system_tray.show_message(
+            "Verificación de Acceso",
+            f"Verificando acceso de {member_name}..."
+        )
     
     def _init_system_tray(self):
         """Initialize system tray icon."""
@@ -105,11 +171,15 @@ class ThorDesktopAgent:
         # Update system tray
         self.system_tray.set_user(self.current_user.email)
         
+        # Connect to Heimdall WebSocket
+        app_logger.info("Connecting to Heimdall WebSocket...")
+        self.ws_manager.connect()
+        
         # Show notification
         self.system_tray.show_message(
             "Autenticación Exitosa",
             f"¡Bienvenido, {self.current_user.full_name}!\n"
-            f"La aplicación seguirá ejecutándose en segundo plano."
+            f"Conectando a servidor de eventos..."
         )
         
         # Close login window
@@ -127,10 +197,14 @@ class ThorDesktopAgent:
         # Update system tray
         self.system_tray.set_user(email)
         
+        # Connect to Heimdall WebSocket
+        app_logger.info("Connecting to Heimdall WebSocket...")
+        self.ws_manager.connect()
+        
         # Show notification
         self.system_tray.show_message(
             "Sesión Restaurada",
-            f"Bienvenido de nuevo.\nLa aplicación está ejecutándose en segundo plano."
+            f"Bienvenido de nuevo.\nConectando a servidor de eventos..."
         )
     
     def _on_show_requested(self):
@@ -166,6 +240,10 @@ class ThorDesktopAgent:
             
             if success:
                 app_logger.info("Logout successful")
+                
+                # Disconnect WebSocket
+                if self.ws_manager:
+                    self.ws_manager.disconnect()
                 
                 # Update tray
                 self.system_tray.clear_user()
@@ -207,6 +285,10 @@ class ThorDesktopAgent:
         """Quit application."""
         app_logger.info("Quitting application")
         
+        # Disconnect WebSocket
+        if self.ws_manager:
+            self.ws_manager.disconnect()
+        
         # Hide tray
         if self.system_tray:
             self.system_tray.hide()
@@ -216,7 +298,7 @@ class ThorDesktopAgent:
             self.login_window.close()
         
         # Quit
-        self.app.quit()
+        self.loop.stop()
 
 
 def main():

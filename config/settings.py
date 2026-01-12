@@ -20,6 +20,11 @@ API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 API_VERSION = "v1"
 API_DESKTOP_PATH = f"/api/{API_VERSION}/desktop"
 
+# Heimdall WebSocket Configuration
+HEIMDALL_WS_URL = os.getenv("HEIMDALL_WS_URL", "ws://localhost:8080")
+HEIMDALL_WS_ENDPOINT = f"/api/{API_VERSION}/ws/desktop-agent"
+HEIMDALL_HEARTBEAT_INTERVAL = 30
+
 # Database Configuration
 DB_NAME = "thor_agent.db"
 DB_PATH = DATA_DIR / DB_NAME
