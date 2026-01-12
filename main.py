@@ -253,8 +253,10 @@ class ThorDesktopAgent:
         dialog.enrollment_completed.connect(on_enrollment_completed)
         dialog.enrollment_cancelled.connect(on_enrollment_cancelled)
         
-        # Show dialog
-        dialog.exec()
+        # Show dialog (non-blocking to keep WebSocket alive)
+        dialog.show()
+        dialog.raise_()  # Bring to front
+        dialog.activateWindow()  # Give focus
     
     def _init_system_tray(self):
         """Initialize system tray icon."""

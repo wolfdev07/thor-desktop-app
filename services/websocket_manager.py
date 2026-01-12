@@ -132,26 +132,23 @@ class WebSocketManager(QObject):
     
     def connect(self):
         """Connect to Heimdall (sync wrapper for Qt)."""
-        loop = asyncio.get_event_loop()
-        loop.create_task(self.connect_async())
+        asyncio.ensure_future(self.connect_async())
     
     def disconnect(self):
         """Disconnect from Heimdall (sync wrapper for Qt)."""
-        loop = asyncio.get_event_loop()
-        loop.create_task(self.disconnect_async())
+        asyncio.ensure_future(self.disconnect_async())
     
     def send_enrollment_progress(self, request_id: str, member_number: str, 
                                  touch_number: int, success: bool, gym_id: int):
         """Send enrollment progress to Heimdall (sync wrapper for Qt)."""
-        loop = asyncio.get_event_loop()
-        loop.create_task(
+        asyncio.ensure_future(
             self.send_enrollment_progress_async(request_id, member_number, touch_number, success, gym_id)
         )
     
     def send_enrollment_complete(self, request_id: str, member_number: str, 
                                 enrollment_token: str, gym_id: int, device_id: str):
         """Send enrollment complete to Heimdall (sync wrapper for Qt)."""
-        loop = asyncio.get_event_loop()
-        loop.create_task(
+        asyncio.ensure_future(
             self.send_enrollment_complete_async(request_id, member_number, enrollment_token, gym_id, device_id)
         )
+
