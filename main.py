@@ -26,6 +26,7 @@ class ThorDesktopAgent:
         self.system_tray = None
         self.ws_manager = None
         self.current_user = None
+        self.active_enrollment_requests = set()  # Track active enrollment request IDs
         
     def run(self):
         """Run the application."""
@@ -155,6 +156,17 @@ class ThorDesktopAgent:
         member_number = enrollment_data.get('member_number')
         member_name = enrollment_data.get('member_name', 'Unknown')
         
+        # Check if already processing this request
+        if request_id in self.active_enrollment_requests:
+            app_logger.warning(
+                f"⚠️ Duplicate enrollment request ignored | "
+                f"Request: {request_id} | Member: {member_number}"
+            )
+            return
+        
+        # Mark request as active
+        self.active_enrollment_requests.add(request_id)
+        
         # TODO: Get gym_id from somewhere - for now hardcode gym 1
         # This needs to be fixed in Django to include gym_id in the access token
         gym_id = 1
@@ -238,6 +250,9 @@ class ThorDesktopAgent:
                 "✅ Registro Exitoso",
                 f"Huella de {member_name} registrada correctamente"
             )
+            
+            # Remove from active requests
+            self.active_enrollment_requests.discard(request_id)
         
         def on_enrollment_cancelled():
             """Handle enrollment cancellation."""
@@ -247,6 +262,9 @@ class ThorDesktopAgent:
                 "Registro Cancelado",
                 f"Registro de huella de {member_name} cancelado"
             )
+            
+            # Remove from active requests
+            self.active_enrollment_requests.discard(request_id)
         
         # Connect signals
         dialog.touch_registered.connect(on_touch_registered)
