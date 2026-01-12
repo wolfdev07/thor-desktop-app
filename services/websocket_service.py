@@ -259,6 +259,46 @@ class HeimdallWebSocketClient:
         })
         app_logger.info(f"👆 Biometric enrolled for member {member_id}")
     
+    async def notify_enrollment_progress(self, request_id: str, member_number: str, 
+                                        touch_number: int, success: bool, gym_id: int):
+        """Notify Heimdall of enrollment progress.
+        
+        Args:
+            request_id: Enrollment request ID from Heimdall
+            member_number: Member's membership number
+            touch_number: Current touch number (1-4)
+            success: Whether the touch was successful
+            gym_id: Gym ID for routing
+        """
+        await self.send_action("enrollment_progress", {
+            "request_id": request_id,
+            "member_number": member_number,
+            "touch_number": touch_number,
+            "success": success,
+            "gym_id": gym_id
+        })
+        app_logger.info(f"📊 Enrollment progress: {member_number} - Touch {touch_number} - {'✅' if success else '❌'}")
+    
+    async def notify_enrollment_complete(self, request_id: str, member_number: str, 
+                                        enrollment_token: str, gym_id: int, device_id: str):
+        """Notify Heimdall that enrollment is complete.
+        
+        Args:
+            request_id: Enrollment request ID from Heimdall
+            member_number: Member's membership number
+            enrollment_token: Token confirming 4 successful touches
+            gym_id: Gym ID for routing
+            device_id: Desktop agent device ID
+        """
+        await self.send_action("enrollment_complete", {
+            "request_id": request_id,
+            "member_number": member_number,
+            "enrollment_token": enrollment_token,
+            "gym_id": gym_id,
+            "device_id": device_id
+        })
+        app_logger.info(f"🎉 Enrollment complete: {member_number} - Token: {enrollment_token}")
+    
     async def send_device_status(self, status: Dict[str, Any]):
         """Send device status to Heimdall.
         

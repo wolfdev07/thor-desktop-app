@@ -4,7 +4,7 @@ import base64
 from typing import Optional
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from utils.logger import app_logger
 from utils.keyring_manager import keyring_manager
 from config.constants import KEY_DB_ENCRYPTION_KEY
@@ -42,8 +42,8 @@ class Encryption:
         # Create seed from device-specific data
         seed = f"{fp['uuid']}{fp['cpu_id']}{fp['mac_hash']}".encode()
         
-        # Derive key using PBKDF2
-        kdf = PBKDF2(
+        # Derive key using PBKDF2HMAC
+        kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=salt,

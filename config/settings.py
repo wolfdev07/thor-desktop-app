@@ -18,11 +18,13 @@ LOGS_DIR.mkdir(exist_ok=True)
 # API Configuration
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 API_VERSION = "v1"
-API_DESKTOP_PATH = f"/api/{API_VERSION}/desktop"
+API_PREFIX = os.getenv("API_PREFIX", "valhalla")  # valhalla prefix for Django
+API_DESKTOP_PATH = f"/{API_PREFIX}/api/{API_VERSION}/desktop"
 
 # Heimdall WebSocket Configuration
 HEIMDALL_WS_URL = os.getenv("HEIMDALL_WS_URL", "ws://localhost:8080")
-HEIMDALL_WS_ENDPOINT = f"/api/{API_VERSION}/ws/desktop-agent"
+HEIMDALL_PREFIX = os.getenv("HEIMDALL_PREFIX", "heimdall")  # heimdall prefix
+HEIMDALL_WS_ENDPOINT = f"/{HEIMDALL_PREFIX}/api/{API_VERSION}/ws/desktop-agent"
 HEIMDALL_HEARTBEAT_INTERVAL = 30
 
 # Database Configuration

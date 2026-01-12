@@ -108,6 +108,43 @@ class Setting(Base):
         self.value_encrypted = encryption.encrypt(val)
 
 
+class FingerprintEnrollment(Base):
+    """Fingerprint enrollment model - tracks enrollment sessions."""
+    __tablename__ = 'fingerprint_enrollments'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    membership_number_encrypted = Column(String, nullable=False, index=True)
+    enrollment_token_encrypted = Column(String, nullable=False)  # Token confirming 4 touches
+    touch_count = Column(Integer, default=4)  # Number of successful touches
+    completed_at = Column(DateTime, default=datetime.utcnow)
+    
+    @property
+    def membership_number(self) -> str:
+        """Decrypt and return membership number."""
+        try:
+            return encryption.decrypt(self.membership_number_encrypted)
+        except Exception:
+            return ""
+    
+    @membership_number.setter
+    def membership_number(self, value: str):
+        """Encrypt and store membership number."""
+        self.membership_number_encrypted = encryption.encrypt(value)
+    
+    @property
+    def enrollment_token(self) -> str:
+        """Decrypt and return enrollment token."""
+        try:
+            return encryption.decrypt(self.enrollment_token_encrypted)
+        except Exception:
+            return ""
+    
+    @enrollment_token.setter
+    def enrollment_token(self, value: str):
+        """Encrypt and store enrollment token."""
+        self.enrollment_token_encrypted = encryption.encrypt(value)
+
+
 class Database:
     """Database manager."""
     
@@ -243,6 +280,56 @@ class Database:
             if not member:
                 return []
             return member.fingerprints
+        finally:
+            session.close()
+    
+    def save_enrollment(self, membership_number: str, enrollment_token: str) -> bool:
+        """Save fingerprint enrollment record.
+        
+        Args:
+            membership_number: Member's membership number
+            enrollment_token: Token confirming 4 successful touches
+            
+        Returns:
+            True if successful
+        """
+        session = self.get_session()
+        try:
+            enrollment = FingerprintEnrollment()
+            enrollment.membership_number = membership_number
+            enrollment.enrollment_token = enrollment_token
+            enrollment.touch_count = 4
+            
+            session.add(enrollment)
+            session.commit()
+            
+            app_logger.info(f"✅ Saved enrollment for {membership_number}")
+            return True
+            
+        except Exception as e:
+            app_logger.error(f"Failed to save enrollment: {e}")
+            session.rollback()
+            return False
+        finally:
+            session.close()
+    
+    def get_enrollment(self, membership_number: str) -> Optional[FingerprintEnrollment]:
+        """Get enrollment record for a member.
+        
+        Args:
+            membership_number: Member's membership number
+            
+        Returns:
+            FingerprintEnrollment or None
+        """
+        session = self.get_session()
+        try:
+            # Need to decrypt to compare - inefficient but works for small datasets
+            enrollments = session.query(FingerprintEnrollment).all()
+            for enrollment in enrollments:
+                if enrollment.membership_number == membership_number:
+                    return enrollment
+            return None
         finally:
             session.close()
     

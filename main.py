@@ -95,6 +95,7 @@ class ThorDesktopAgent:
         self.ws_manager.disconnected.connect(self._on_ws_disconnected)
         self.ws_manager.checkin_received.connect(self._on_checkin)
         self.ws_manager.verify_access_received.connect(self._on_verify_access)
+        self.ws_manager.fingerprint_enroll_received.connect(self._on_fingerprint_enroll)
     
     def _on_ws_connected(self):
         """Handle WebSocket connection."""
@@ -137,6 +138,123 @@ class ThorDesktopAgent:
             "Verificación de Acceso",
             f"Verificando acceso de {member_name}..."
         )
+    
+    def _on_fingerprint_enroll(self, enrollment_data: dict):
+        """Handle fingerprint enrollment request.
+        
+        Args:
+            enrollment_data: Enrollment data from Heimdall including request_id, 
+                           member_number, member_name, etc.
+        """
+        from ui.enrollment_dialog import EnrollmentDialog
+        from core.database import database, FingerprintEnrollment
+        from utils.keyring_manager import keyring_manager
+        from config.constants import KEY_DEVICE_ID
+        
+        request_id = enrollment_data.get('request_id')
+        member_number = enrollment_data.get('member_number')
+        member_name = enrollment_data.get('member_name', 'Unknown')
+        
+        # TODO: Get gym_id from somewhere - for now hardcode gym 1
+        # This needs to be fixed in Django to include gym_id in the access token
+        gym_id = 1
+        
+        app_logger.info(
+            f"🔐 Fingerprint enrollment requested | "
+            f"Request: {request_id} | Member: {member_number} ({member_name})"
+        )
+        
+        # Show notification
+        self.system_tray.show_message(
+            "Registro de Huella",
+            f"Iniciando registro de huella para {member_name}"
+        )
+        
+        # Create and show enrollment dialog
+        dialog = EnrollmentDialog(
+            member_number=member_number,
+            member_name=member_name,
+            request_id=request_id
+        )
+        
+        # Connect signals
+        def on_touch_registered(success: bool):
+            """Handle each touch (Verdadero/Falso button press)."""
+            current_touch = dialog.touch_count  # Total touches (including failed)
+            
+            app_logger.info(
+                f"📊 Touch {current_touch} registered | Success: {success} | "
+                f"Successful touches: {dialog.successful_touches}/4"
+            )
+            
+            # Send progress to Heimdall
+            self.ws_manager.send_enrollment_progress(
+                request_id=request_id,
+                member_number=member_number,
+                touch_number=current_touch,
+                success=success,
+                gym_id=gym_id
+            )
+        
+        def on_enrollment_completed(enrollment_token: str):
+            """Handle enrollment completion (4 successful touches)."""
+            app_logger.info(
+                f"🎉 Enrollment completed | Member: {member_number} | "
+                f"Token: {enrollment_token[:8]}..."
+            )
+            
+            # Save to database
+            try:
+                session = database.get_session()
+                
+                enrollment = FingerprintEnrollment()
+                enrollment.membership_number = member_number
+                enrollment.enrollment_token = enrollment_token
+                enrollment.touch_count = 4
+                
+                session.add(enrollment)
+                session.commit()
+                session.close()
+                
+                app_logger.info("💾 Enrollment saved to database")
+                
+            except Exception as e:
+                app_logger.error(f"Failed to save enrollment: {e}")
+            
+            # Get device_id
+            device_id = keyring_manager.get(KEY_DEVICE_ID) or "unknown"
+            
+            # Send completion to Heimdall
+            self.ws_manager.send_enrollment_complete(
+                request_id=request_id,
+                member_number=member_number,
+                enrollment_token=enrollment_token,
+                gym_id=gym_id,
+                device_id=device_id
+            )
+            
+            # Show success notification
+            self.system_tray.show_message(
+                "✅ Registro Exitoso",
+                f"Huella de {member_name} registrada correctamente"
+            )
+        
+        def on_enrollment_cancelled():
+            """Handle enrollment cancellation."""
+            app_logger.warning(f"❌ Enrollment cancelled | Member: {member_number}")
+            
+            self.system_tray.show_message(
+                "Registro Cancelado",
+                f"Registro de huella de {member_name} cancelado"
+            )
+        
+        # Connect signals
+        dialog.touch_registered.connect(on_touch_registered)
+        dialog.enrollment_completed.connect(on_enrollment_completed)
+        dialog.enrollment_cancelled.connect(on_enrollment_cancelled)
+        
+        # Show dialog
+        dialog.exec()
     
     def _init_system_tray(self):
         """Initialize system tray icon."""
