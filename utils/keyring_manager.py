@@ -67,19 +67,36 @@ class KeyringManager:
             app_logger.error(f"Failed to delete credential {key}: {e}")
             return False
     
-    def clear_all(self, keys: list[str]) -> bool:
+    def clear_all(self, keys: Optional[list[str]] = None) -> bool:
         """Clear multiple credentials.
         
         Args:
-            keys: List of credential keys to delete
+            keys: List of credential keys to delete. 
+                  If None, deletes all known credentials.
             
         Returns:
             True if all successful, False otherwise
         """
+        from config.constants import (
+            KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN, 
+            KEY_DEVICE_ID, KEY_USER_EMAIL
+        )
+        
+        if keys is None:
+            # Delete all known credentials
+            keys = [
+                KEY_ACCESS_TOKEN,
+                KEY_REFRESH_TOKEN,
+                KEY_DEVICE_ID,
+                KEY_USER_EMAIL
+            ]
+        
         success = True
         for key in keys:
             if not self.delete(key):
                 success = False
+        
+        app_logger.info(f"Cleared {len(keys)} credentials")
         return success
 
 

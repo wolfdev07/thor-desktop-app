@@ -1,16 +1,18 @@
 """Thor Desktop Agent - Main application entry point."""
 import sys
+import signal
 import asyncio
 from qasync import QEventLoop
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 from PySide6.QtCore import Qt
 
-from config.settings import WINDOW_TITLE, APP_VERSION
+from config.settings import WINDOW_TITLE, APP_VERSION, DEV_MODE
 from ui.login_window import LoginWindow
 from ui.system_tray import SystemTray
 from services.auth_service import auth_service
 from services.websocket_manager import WebSocketManager
 from utils.logger import app_logger
+from utils.keyring_manager import keyring_manager
 from models import LoginResponse
 
 
@@ -39,10 +41,20 @@ class ThorDesktopAgent:
         self.loop = QEventLoop(self.app)
         asyncio.set_event_loop(self.loop)
         
+        # Setup signal handlers for Ctrl+C
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        
         # Enable high DPI support (skip deprecated warning)
         # self.app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
         
         app_logger.info(f"Starting {WINDOW_TITLE} v{APP_VERSION}")
+        
+        # Development mode: Clear all credentials on startup
+        if DEV_MODE:
+            app_logger.warning("🔧 DEV_MODE enabled: Clearing all saved credentials")
+            keyring_manager.clear_all()
+            app_logger.info("✅ Credentials cleared, fresh start required")
         
         # Initialize WebSocket manager
         self.ws_manager = WebSocketManager()
@@ -299,6 +311,17 @@ class ThorDesktopAgent:
         
         # Quit
         self.loop.stop()
+    
+    def _signal_handler(self, signum, frame):
+        """Handle Unix signals (Ctrl+C)."""
+        signal_name = signal.Signals(signum).name
+        app_logger.warning(f"\n⚠️  Received {signal_name}, shutting down gracefully...")
+        
+        # Call quit from main thread
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self._quit)
+        else:
+            sys.exit(0)
 
 
 def main():

@@ -43,6 +43,9 @@ LOG_FILE = LOGS_DIR / "thor_agent.log"
 LOG_ROTATION = "10 MB"
 LOG_RETENTION = "30 days"
 
+# Development Configuration
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
+
 # Application Configuration
 APP_VERSION = "1.0.0"
 WINDOW_TITLE = "Thor Desktop Agent"

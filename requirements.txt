@@ -4,7 +4,7 @@ PySide6-Addons==6.10.1
 PySide6-Essentials==6.10.1
 
 # Async Qt integration
-qasync==0.27.1
+qasync==0.28.0
 
 # HTTP Client
 requests==2.32.5
