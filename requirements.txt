@@ -3,6 +3,9 @@ PySide6==6.10.1
 PySide6-Addons==6.10.1
 PySide6-Essentials==6.10.1
 
+# WebEngine (Chromium-based browser for hybrid mode)
+PySide6-WebEngine==6.10.1
+
 # Async Qt integration
 qasync==0.28.0
 

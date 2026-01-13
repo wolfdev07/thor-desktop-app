@@ -1,114 +1,464 @@
-# Thor Desktop Agent
+# Thor Desktop Agent 🔨
 
-Agente de escritorio para gestión de autenticación y control de dispositivos biométricos ZKTeco.
+**Agente de escritorio híbrido web-nativo para gestión de gimnasios con control biométrico.**
 
-## Características
+Thor es una aplicación de escritorio basada en **Qt WebEngine** (Chromium) que carga tu aplicación Django localmente, proporcionando acceso nativo al hardware (lectores de huella ZKTeco) mediante un puente JavaScript ↔ Python (QWebChannel).
 
-- ✅ **Autenticación JWT** con backend Django
+## ✨ Características Principales
+
+### 🌐 Arquitectura Híbrida
+- **WebView Mode**: Interfaz 100% Django (HTML/CSS/JS)
+- **Hardware Bridge**: Acceso a dispositivos biométricos desde JavaScript
+- **QWebChannel**: Comunicación bidireccional Python ↔ JavaScript
+- **Sistema Tray**: Notificaciones y control en segundo plano
+
+### 🔐 Seguridad
+- ✅ **Autenticación JWT** con Django (Valhalla API)
 - ✅ **Device Fingerprinting** único por dispositivo
-- ✅ **Almacenamiento seguro** de tokens (keyring nativo del sistema)
-- ✅ **Base de datos local encriptada** (SQLite + Fernet)
-- ✅ **System Tray** - ejecuta en segundo plano
-- ✅ **WebSocket** para eventos en tiempo real
-- 🔜 **ZKTeco 9500** - control de lectores de huellas
+- ✅ **Keyring nativo** del sistema (Secret Service/Credential Vault)
+- ✅ **Base de datos local encriptada** (SQLite + Fernet PBKDF2)
+- ✅ **Comunicación segura** via QWebChannel (memoria interna)
 
-## Arquitectura
+### 📡 Conectividad
+- ✅ **WebSocket Heimdall** - Eventos en tiempo real (enrollment, verificación)
+- ✅ **Django REST API** - Autenticación y sincronización
+- ✅ **Redis Pub/Sub** - Broadcasting multi-dispositivo
+
+### 🖐️ Biometría
+- ✅ **Simulación 4-touch** - Enrollment de prueba (Verdadero/Falso)
+- 🔜 **ZKTeco SDK** - Integración con lectores físicos (9500, Live 20R)
+
+---
+
+## 🏗️ Nueva Arquitectura
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Thor Desktop Agent                    │
+│                  (PySide6 + QWebEngine)                  │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  ┌────────────────────────────────────────────────┐    │
+│  │         QWebEngineView (Chromium)              │    │
+│  │   ┌────────────────────────────────────────┐   │    │
+│  │   │   Django App (localhost:8000)         │   │    │
+│  │   │   • Login UI                          │   │    │
+│  │   │   • Enrollment Modal                  │   │    │
+│  │   │   • Dashboard                         │   │    │
+│  │   │   • Members Management                │   │    │
+│  │   └────────────────────────────────────────┘   │    │
+│  │              ▲                  │               │    │
+│  │              │ QWebChannel      │               │    │
+│  │              │ (Memory)         ▼               │    │
+│  │   ┌────────────────────────────────────────┐   │    │
+│  │   │     Hardware Bridge (Python)          │   │    │
+│  │   │  • iniciar_enrollment()               │   │    │
+│  │   │  • registrar_toque()                  │   │    │
+│  │   │  • verificar_huella()                 │   │    │
+│  │   │  • signals: progress, completed       │   │    │
+│  │   └────────────────────────────────────────┘   │    │
+│  └────────────────────────────────────────────────┘    │
+│                                                          │
+│  ┌───────────────┐  ┌──────────────┐  ┌─────────────┐ │
+│  │ WebSocket     │  │  SQLite DB   │  │ System Tray │ │
+│  │ Manager       │  │  (Encrypted) │  │             │ │
+│  │ (Heimdall)    │  │              │  │             │ │
+│  └───────────────┘  └──────────────┘  └─────────────┘ │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+         │                    │                   │
+         ▼                    ▼                   ▼
+    Heimdall WS         Valhalla API         ZKTeco SDK
+    (ws://8080)       (http://8000)          (Futuro)
+```
+
+### Estructura del Proyecto
 
 ```
 thor-desktop-app/
-├── config/          # Configuración (settings, constants)
-├── core/            # Funcionalidad core
-│   ├── device_fingerprint.py   # Generación de device ID
-│   ├── encryption.py            # Encriptación Fernet
-│   └── database.py              # ORM SQLite
-├── services/        # Servicios externos
-│   ├── auth_service.py          # API de autenticación
-│   └── websocket_service.py     # Cliente WebSocket
-├── ui/              # Interfaz PySide6
-│   ├── login_window.py          # Ventana de login
-│   └── system_tray.py           # Icono de bandeja
-├── models/          # Modelos de datos
-├── utils/           # Utilidades (logger, keyring)
-└── main.py          # Punto de entrada
+├── bridge/                    # 🌉 QWebChannel Bridge
+│   └── hardware_bridge.py     #    Puente JS ↔ Python
+├── ui/
+│   ├── web_view.py           # 🌐 Navegador WebEngine
+│   └── system_tray.py        # 📍 Bandeja del sistema
+├── services/
+│   ├── auth_service.py       # 🔐 Autenticación Django
+│   ├── websocket_service.py  # 📡 Cliente WebSocket
+│   └── websocket_manager.py  # 🔌 Manager + Signals Qt
+├── core/
+│   ├── database.py           # 💾 SQLite ORM
+│   ├── encryption.py         # 🔒 Fernet + PBKDF2
+│   └── device_fingerprint.py # 🆔 Device ID único
+├── config/
+│   ├── settings.py           # ⚙️  Configuración central
+│   └── constants.py          # 📋 Constantes
+├── examples/
+│   ├── test_bridge.html      # 🧪 UI de prueba standalone
+│   └── test_webview.py       # 🧪 Script de prueba
+├── main.py                   # 🚀 Entry point
+└── DJANGO_INTEGRATION.md     # 📚 Guía completa
 ```
 
-## Seguridad
+---
 
-- **Tokens**: Almacenados en keyring nativo (Secret Service/Credential Vault)
-- **DB Encriptada**: Clave derivada con PBKDF2 del fingerprint del dispositivo
-- **Datos sensibles**: Nombres, emails y huellas encriptados con Fernet
-- **Auto-refresh**: Tokens se renuevan automáticamente
+## 🚀 Inicio Rápido
 
-## Base de Datos Local
-
-- **Member**: Socios (backend_id + datos encriptados)
-- **Fingerprint**: Huellas biométricas encriptadas
-- **Setting**: Configuraciones de la app
-
-## Instalación
+### 1. Instalación
 
 ```bash
 # Activar entorno virtual
 source env/bin/activate
 
-# Instalar dependencias
+# Instalar dependencias (INCLUYE WebEngine)
 pip install -r requirements.txt
 
-# Configurar variables de entorno
+# Configurar .env
 cp .env.example .env
-# Editar .env con la URL de tu backend
 ```
 
-## Uso
+### 2. Configurar `.env`
+
+```env
+# Modo desarrollo
+DEV_MODE=true
+
+# Django App URL (IMPORTANTE)
+DJANGO_WEB_URL=http://localhost:8000
+
+# APIs
+API_BASE_URL=http://localhost:8000
+HEIMDALL_WS_URL=ws://localhost:8080
+```
+
+### 3. Ejecutar
 
 ```bash
-# Ejecutar en desarrollo
+# Asegúrate que Django esté corriendo en puerto 8000
+# En otra terminal: cd valhalla && python manage.py runserver 8000
+
+# Iniciar Thor
 python main.py
-
-# Compilar para distribución
-pyinstaller --onefile --windowed \
-  --name ThorDesktopAgent \
-  main.py
 ```
 
-## Configuración Backend
+Thor abrirá una ventana de navegador cargando tu app de Django.
 
-La app consume estos endpoints del backend Django:
+---
 
-- `POST /api/v1/desktop/auth/login` - Login con fingerprint
-- `POST /api/v1/desktop/auth/refresh` - Renovar tokens
-- `POST /api/v1/desktop/auth/logout` - Cerrar sesión
-- `WS /ws/events` - WebSocket de eventos
+## 🔌 Integración con Django
 
-Configurar en `.env`:
+### En tu template base de Django
+
+```html
+<!-- base.html -->
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+  // Inicializar bridge cuando esté disponible
+  window.addEventListener('DOMContentLoaded', function() {
+    if (typeof qt !== 'undefined' && qt.webChannelTransport) {
+      new QWebChannel(qt.webChannelTransport, function(channel) {
+        window.backend = channel.objects.backend;
+        console.log('✅ Thor Hardware Bridge conectado');
+        
+        // Escuchar eventos de enrollment de Heimdall
+        window.onThorEnrollmentRequest = function(data) {
+          // Abrir modal de enrollment en tu UI
+          openEnrollmentModal(data);
+        };
+      });
+    }
+  });
+</script>
 ```
-API_BASE_URL=http://localhost:8000
+
+### Ejemplo: Registrar Huella (4 toques)
+
+```javascript
+// Cuando Heimdall envía evento "fingerprint_enroll"
+function startEnrollment(requestId, memberNumber, memberName) {
+  // 1. Iniciar enrollment en el bridge
+  backend.iniciar_enrollment(requestId, memberNumber, memberName, 
+    function(started) {
+      if (started) {
+        // Mostrar UI de enrollment
+        showEnrollmentUI();
+      }
+    }
+  );
+}
+
+// Usuario presiona botón "VERDADERO" o "FALSO"
+function registerTouch(success) {
+  backend.registrar_toque(success, function(resultJson) {
+    const result = JSON.parse(resultJson);
+    
+    // Actualizar progreso visual
+    updateProgress(result.successful_touches, 4);
+    
+    if (result.status === 'complete') {
+      // ¡Enrollment completado!
+      console.log('Token:', result.enrollment_token);
+      closeEnrollmentUI();
+    }
+  });
+}
 ```
 
-## Flujo de Autenticación
+**Ver guía completa**: [DJANGO_INTEGRATION.md](DJANGO_INTEGRATION.md)
 
-1. Usuario ingresa credenciales
-2. App genera device fingerprint (UUID + CPU + MAC + OS)
-3. Envía login al backend con fingerprint
-4. Backend valida y retorna access_token + refresh_token + device_id
-5. Tokens se almacenan en keyring del sistema
-6. Access token se renueva automáticamente cada 10 min
-7. App corre en system tray en segundo plano
+---
 
-## Próximos Pasos
+## 🧪 Testing (Sin Django)
 
-- [ ] Integración con ZKTeco SDK
-- [ ] Sincronización de huellas con backend
-- [ ] Manejo de eventos WebSocket (verificación de acceso)
-- [ ] UI de gestión de dispositivos
-- [ ] Instalador para Windows
+```bash
+# Probar bridge con página HTML standalone
+cd examples
+python test_webview.py
 
-## Logs
+# Se abrirá ventana con UI de prueba completa
+# - Simular enrollment 4-touch
+# - Ver progreso en tiempo real
+# - Verificar signals Python ↔ JS
+```
 
-Los logs se guardan en `logs/thor_agent.log` con rotación automática (10 MB).
+---
 
-## Platform Support
+## 📡 API del Hardware Bridge
 
-- **Linux**: ✅ Debian/Ubuntu (Secret Service)
-- **Windows**: ✅ 10/11 (Credential Vault)
-- **macOS**: ⚠️ Sin probar (debería funcionar con Keychain)
+### Métodos Disponibles en JavaScript
+
+```javascript
+// Device Info (properties)
+backend.device_id    // "8bed4791c745..."
+backend.version      // "1.0.0"
+
+// Enrollment
+backend.iniciar_enrollment(requestId, memberNumber, memberName, callback)
+backend.registrar_toque(success, callback)  // success = true/false
+backend.cancelar_enrollment(callback)
+
+// Verificación (futuro)
+backend.verificar_huella(memberNumber, callback)
+
+// Utilidades
+backend.mostrar_notificacion(title, message)
+backend.obtener_estado(callback)
+backend.log_debug(message)
+```
+
+### Signals (Eventos Python → JavaScript)
+
+```javascript
+// Progreso de enrollment
+backend.enrollment_progress.connect(function(memberNumber, touchCount, success) {
+  console.log(`Touch ${touchCount}: ${success ? 'OK' : 'FAIL'}`);
+});
+
+// Enrollment completado
+backend.enrollment_completed.connect(function(memberNumber, token) {
+  console.log(`✅ Token: ${token}`);
+});
+
+// Notificaciones
+backend.notification.connect(function(title, message) {
+  showToast(title, message);
+});
+```
+
+---
+
+## 🔐 Flujo de Autenticación
+
+### Modo WebView (Actual)
+
+1. **Thor inicia** → Carga `http://localhost:8000`
+2. **Django verifica sesión**:
+   - ✅ Tiene sesión → Muestra dashboard
+   - ❌ No tiene sesión → Redirect a `/login`
+3. **Usuario hace login en Django** → Django crea sesión
+4. **Thor detecta login exitoso** → Conecta WebSocket a Heimdall
+5. **Heimdall envía eventos** → Thor los inyecta en Django vía JavaScript
+
+### Login desde Django
+
+```javascript
+// Después de login exitoso en tu frontend
+if (window.backend) {
+  backend.log_debug('User logged in successfully');
+  
+  // Thor detectará esto y conectará a Heimdall
+  window.location.href = '/dashboard';
+}
+```
+
+---
+
+## 🌊 Flujo Completo de Enrollment
+
+```
+Valhalla Frontend
+    │ POST /heimdall/api/v1/fingerprint/enroll
+    ▼
+Heimdall (FastAPI)
+    │ Broadcast via Redis: fingerprint_enroll
+    ▼
+Thor WebSocket
+    │ Recibe evento
+    ▼
+main.py: _on_fingerprint_enroll()
+    │ JavaScript injection
+    ▼
+Django App (en WebView)
+    │ window.onThorEnrollmentRequest(data)
+    ▼
+Usuario presiona "VERDADERO" (4 veces)
+    │ backend.registrar_toque(true)
+    ▼
+HardwareBridge.registrar_toque()
+    │ Guarda en DB local
+    │ Envía progress a Heimdall
+    ▼
+Heimdall → Valhalla Frontend
+    │ Actualiza UI en tiempo real
+    ▼
+4/4 toques completados
+    │ enrollment_completed signal
+    ▼
+Django muestra éxito ✅
+```
+
+---
+
+## 🗄️ Base de Datos Local
+
+- **FingerprintEnrollment**: Registros de enrollment
+  - `membership_number` (encriptado)
+  - `enrollment_token` (UUID)
+  - `touch_count` (1-4)
+
+- **Member**: Cache de socios (futuro)
+- **Setting**: Configuraciones de la app
+
+**Encriptación**: Fernet con clave derivada de device fingerprint (PBKDF2)
+
+---
+
+## 📦 Dependencias Clave
+
+```
+PySide6==6.10.1               # Qt Framework
+PySide6-WebEngine==6.10.1     # Chromium Browser (NEW!)
+qasync==0.28.0                # Async Qt integration
+websockets==16.0              # WebSocket client
+cryptography==44.0.0          # Fernet encryption
+keyring==26.2.1               # OS Keyring
+SQLAlchemy==2.0.39            # ORM
+```
+
+---
+
+## 🔧 Configuración Avanzada
+
+### Modo Desarrollo vs Producción
+
+```env
+# Desarrollo (DEV_MODE=true)
+DJANGO_WEB_URL=http://localhost:8000
+# - DevTools habilitados (F12)
+# - Menú contextual (click derecho)
+# - Console logs visibles
+
+# Producción (DEV_MODE=false)
+DJANGO_WEB_URL=https://tu-dominio.com
+# - DevTools deshabilitados
+# - Sin menú contextual
+# - Navegación bloqueada (no puede salir de tu app)
+```
+
+### System Tray Actions
+
+- **Mostrar** → Trae WebView al frente
+- **Cerrar Sesión** → Logout en Django + desconectar Heimdall
+- **Salir** → Cierra Thor completamente
+
+---
+
+## 📝 Logs
+
+```bash
+# Logs de Thor
+tail -f logs/thor_agent.log
+
+# Buscar eventos de enrollment
+grep "enrollment" logs/thor_agent.log
+
+# Ver comunicación WebSocket
+grep "WebSocket" logs/thor_agent.log
+```
+
+---
+
+## 🐛 Troubleshooting
+
+### "QWebChannel not available"
+→ Asegúrate de cargar `qrc:///qtwebchannel/qwebchannel.js` en tu HTML
+
+### "Backend undefined"
+→ El bridge se inicializa después de DOMContentLoaded, usa evento `thor-ready`
+
+### "Django no carga"
+→ Verifica que Django esté corriendo: `curl http://localhost:8000`
+
+### "WebSocket no conecta"
+→ Verifica Heimdall: `curl http://localhost:8080/health`
+
+---
+
+## 🚀 Próximos Pasos
+
+- [x] ✅ Arquitectura WebView + QWebChannel
+- [x] ✅ Hardware Bridge funcional
+- [x] ✅ Simulación 4-touch enrollment
+- [x] ✅ Integración WebSocket Heimdall
+- [ ] 🔜 ZKTeco SDK Integration (Live 20R, 9500)
+- [ ] 🔜 Verificación biométrica en tiempo real
+- [ ] 🔜 Sincronización automática con Django
+- [ ] 🔜 Instalador Windows (.exe)
+- [ ] 🔜 Firma digital de código
+
+---
+
+## 🌍 Platform Support
+
+| OS      | Status | Keyring          | WebEngine |
+|---------|--------|------------------|-----------|
+| Linux   | ✅     | Secret Service   | ✅        |
+| Windows | ✅     | Credential Vault | ✅        |
+| macOS   | ⚠️     | Keychain         | ✅        |
+
+---
+
+## 📚 Documentación
+
+- **[DJANGO_INTEGRATION.md](DJANGO_INTEGRATION.md)** - Guía completa de integración
+- **[QUICKSTART.md](QUICKSTART.md)** - Inicio rápido paso a paso
+- **[examples/test_bridge.html](examples/test_bridge.html)** - Código de ejemplo completo
+
+---
+
+## 🤝 Contribuir
+
+1. Fork el proyecto
+2. Crea una rama: `git checkout -b feature/mi-feature`
+3. Commit: `git commit -am 'Add: nueva funcionalidad'`
+4. Push: `git push origin feature/mi-feature`
+5. Pull Request
+
+---
+
+## 📄 Licencia
+
+Proyecto privado - Forza Gym Management System
+
+---
+
+**Desarrollado con ❤️ usando PySide6 + Qt WebEngine**

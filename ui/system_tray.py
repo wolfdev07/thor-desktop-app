@@ -58,6 +58,12 @@ class SystemTray(QObject):
         show_action.triggered.connect(self.show_requested.emit)
         menu.addAction(show_action)
         
+        # Open WebView action (NEW - for hybrid mode)
+        self.webview_action = QAction("🌐 Abrir App Web", menu)
+        self.webview_action.triggered.connect(lambda: self.show_requested.emit())  # Reuse signal for now
+        self.webview_action.setEnabled(False)
+        menu.addAction(self.webview_action)
+        
         # Logout action
         self.logout_action = QAction("Cerrar Sesión", menu)
         self.logout_action.triggered.connect(self.logout_requested.emit)
@@ -105,6 +111,8 @@ class SystemTray(QObject):
             self.user_action.setText(f"Usuario: {email}")
         if self.logout_action:
             self.logout_action.setEnabled(True)
+        if hasattr(self, 'webview_action') and self.webview_action:
+            self.webview_action.setEnabled(True)  # Enable WebView when logged in
         
         app_logger.debug(f"Tray updated for user: {email}")
     

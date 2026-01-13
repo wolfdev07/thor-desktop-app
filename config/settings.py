@@ -48,6 +48,17 @@ LOG_RETENTION = "30 days"
 # Development Configuration
 DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 
+# WebView Configuration
+# Django app URLs - WebEngine loads this directly
+if DEV_MODE:
+    DJANGO_WEB_URL = os.getenv("DJANGO_WEB_URL", "http://localhost:8000")
+else:
+    DJANGO_WEB_URL = os.getenv("DJANGO_WEB_URL", "https://your-production-domain.com")
+
+# WebView settings
+WEBVIEW_ENABLE_DEVTOOLS = DEV_MODE  # F12 DevTools only in development
+WEBVIEW_ENABLE_CONTEXT_MENU = DEV_MODE  # Right-click menu only in development
+
 # Application Configuration
 APP_VERSION = "1.0.0"
 WINDOW_TITLE = "Thor Desktop Agent"
