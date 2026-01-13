@@ -26,7 +26,7 @@ class ThorDesktopAgent:
         self.system_tray = None
         self.ws_manager = None
         self.current_user = None
-        self.active_enrollment_requests = set()  # Track active enrollment request IDs
+        self.active_enrollment_requests = set()  # Track members currently enrolling (by member_number)
         
     def run(self):
         """Run the application."""
@@ -156,16 +156,18 @@ class ThorDesktopAgent:
         member_number = enrollment_data.get('member_number')
         member_name = enrollment_data.get('member_name', 'Unknown')
         
-        # Check if already processing this request
-        if request_id in self.active_enrollment_requests:
+        # Check if already processing enrollment for this member
+        # (Valhalla sometimes sends duplicate requests with different request_ids)
+        if member_number in self.active_enrollment_requests:
             app_logger.warning(
                 f"⚠️ Duplicate enrollment request ignored | "
-                f"Request: {request_id} | Member: {member_number}"
+                f"Request: {request_id} | Member: {member_number} | "
+                f"Reason: Already enrolling this member"
             )
             return
         
-        # Mark request as active
-        self.active_enrollment_requests.add(request_id)
+        # Mark member as actively enrolling (use member_number instead of request_id)
+        self.active_enrollment_requests.add(member_number)
         
         # TODO: Get gym_id from somewhere - for now hardcode gym 1
         # This needs to be fixed in Django to include gym_id in the access token
@@ -251,8 +253,8 @@ class ThorDesktopAgent:
                 f"Huella de {member_name} registrada correctamente"
             )
             
-            # Remove from active requests
-            self.active_enrollment_requests.discard(request_id)
+            # Remove from active enrollments (use member_number)
+            self.active_enrollment_requests.discard(member_number)
         
         def on_enrollment_cancelled():
             """Handle enrollment cancellation."""
@@ -263,8 +265,8 @@ class ThorDesktopAgent:
                 f"Registro de huella de {member_name} cancelado"
             )
             
-            # Remove from active requests
-            self.active_enrollment_requests.discard(request_id)
+            # Remove from active enrollments (use member_number)
+            self.active_enrollment_requests.discard(member_number)
         
         # Connect signals
         dialog.touch_registered.connect(on_touch_registered)
