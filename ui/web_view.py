@@ -15,7 +15,14 @@ from config.settings import DEV_MODE
 
 
 class CustomWebPage(QWebEnginePage):
-    """Custom web page to handle console messages and navigation."""
+    """Custom web page to handle console messages, navigation, and permissions."""
+    
+    def __init__(self, parent=None):
+        """Initialize custom web page."""
+        super().__init__(parent)
+        
+        # Connect feature permission signal
+        self.featurePermissionRequested.connect(self._on_feature_permission_requested)
     
     def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
         """Forward JavaScript console messages to Python logger."""
@@ -27,6 +34,63 @@ class CustomWebPage(QWebEnginePage):
         
         log_level = level_map.get(level, "INFO")
         app_logger.debug(f"🌐 [JS-{log_level}] {message} (Line: {lineNumber})")
+    
+    @Slot(QUrl, 'QWebEnginePage::Feature')
+    def _on_feature_permission_requested(self, origin: QUrl, feature):
+        """Handle permission requests for hardware features (camera, microphone, etc.).
+        
+        Args:
+            origin: URL requesting the permission
+            feature: Feature being requested (camera, microphone, geolocation, etc.)
+        """
+        # Feature types from QWebEnginePage.Feature enum
+        feature_names = {
+            QWebEnginePage.Feature.MediaAudioCapture: "🎤 Microphone",
+            QWebEnginePage.Feature.MediaVideoCapture: "📷 Camera",
+            QWebEnginePage.Feature.MediaAudioVideoCapture: "🎥 Camera + Microphone",
+            QWebEnginePage.Feature.Geolocation: "📍 Geolocation",
+            QWebEnginePage.Feature.DesktopVideoCapture: "🖥️  Desktop Capture",
+            QWebEnginePage.Feature.DesktopAudioVideoCapture: "🖥️  Desktop Capture + Audio",
+        }
+        
+        feature_name = feature_names.get(feature, f"Unknown Feature ({feature})")
+        
+        # Auto-grant permissions for media capture (camera/microphone)
+        if feature in [
+            QWebEnginePage.Feature.MediaAudioCapture,
+            QWebEnginePage.Feature.MediaVideoCapture,
+            QWebEnginePage.Feature.MediaAudioVideoCapture,
+        ]:
+            app_logger.info(f"✅ Granting permission: {feature_name} for {origin.toString()}")
+            self.setFeaturePermission(
+                origin,
+                feature,
+                QWebEnginePage.PermissionPolicy.PermissionGrantedByUser
+            )
+        elif feature == QWebEnginePage.Feature.Geolocation:
+            # Grant geolocation if in dev mode
+            if DEV_MODE:
+                app_logger.info(f"✅ Granting permission: {feature_name} (DEV_MODE)")
+                self.setFeaturePermission(
+                    origin,
+                    feature,
+                    QWebEnginePage.PermissionPolicy.PermissionGrantedByUser
+                )
+            else:
+                app_logger.warning(f"❌ Denying permission: {feature_name} (Production)")
+                self.setFeaturePermission(
+                    origin,
+                    feature,
+                    QWebEnginePage.PermissionPolicy.PermissionDeniedByUser
+                )
+        else:
+            # Deny other permissions by default
+            app_logger.warning(f"❌ Denying permission: {feature_name}")
+            self.setFeaturePermission(
+                origin,
+                feature,
+                QWebEnginePage.PermissionPolicy.PermissionDeniedByUser
+            )
 
 
 class MainWebView(QMainWindow):

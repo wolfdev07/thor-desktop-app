@@ -11,6 +11,7 @@ Thor es una aplicación de escritorio basada en **Qt WebEngine** (Chromium) que 
 - **Hardware Bridge**: Acceso a dispositivos biométricos desde JavaScript
 - **QWebChannel**: Comunicación bidireccional Python ↔ JavaScript
 - **Sistema Tray**: Notificaciones y control en segundo plano
+- **Permisos WebRTC**: Acceso automático a cámara y micrófono desde JavaScript
 
 ### 🔐 Seguridad
 - ✅ **Autenticación JWT** con Django (Valhalla API)
@@ -219,6 +220,27 @@ python test_webview.py
 # - Ver progreso en tiempo real
 # - Verificar signals Python ↔ JS
 ```
+
+### 📷 Test de Cámara WebRTC
+
+```bash
+# Verificar permisos de cámara y micrófono
+cd examples
+python test_camera.py
+
+# Funcionalidades del test:
+# ✅ Solicitud automática de permisos (cámara + micrófono)
+# ✅ Lista de dispositivos disponibles
+# ✅ Cambio entre cámaras
+# ✅ Captura de fotos
+# ✅ Preview en tiempo real
+```
+
+**Permisos otorgados automáticamente**:
+- 📷 Cámara (`MediaVideoCapture`)
+- 🎤 Micrófono (`MediaAudioCapture`)
+- 🎥 Cámara + Micrófono (`MediaAudioVideoCapture`)
+- 📍 Geolocalización (solo en DEV_MODE)
 
 ---
 
