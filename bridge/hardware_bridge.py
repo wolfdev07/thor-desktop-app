@@ -506,23 +506,45 @@ class HardwareBridge(QObject):
         """
         import json
         
+        # Check if dialog already open (prevent multiple calls)
         if self._touch_dialog is not None:
+            app_logger.warning("⚠️ Touch capture dialog already open, rejecting duplicate request")
             return json.dumps({
                 'success': False,
                 'error': 'Ya hay una captura en progreso'
             })
         
+        # Check if enrollment is in progress (conflict prevention)
+        if self._current_enrollment is not None:
+            app_logger.warning(
+                f"⚠️ Cannot start touch capture: enrollment in progress for "
+                f"{self._current_enrollment.get('member_number')}"
+            )
+            return json.dumps({
+                'success': False,
+                'error': 'Hay un enrollment en progreso. Por favor cancela primero.'
+            })
+        
+        app_logger.info(f"🖐️ Touch capture requested: {toques_requeridos} touches")
+        
         self._touch_required = toques_requeridos
         self._touch_count = 0
         
-        # Show modal and start capture
+        # Show modal and start capture (BLOCKING - will return when dialog closes)
         result = self._show_touch_capture_dialog()
+        
+        app_logger.info(
+            f"🏁 Touch capture finished: "
+            f"{'✅ Completed' if result.get('completado') else '❌ Cancelled'} "
+            f"({result.get('toques_exitosos', 0)}/{toques_requeridos} touches)"
+        )
         
         return json.dumps({
             'success': result['success'],
             'toques_requeridos': self._touch_required,
             'completado': result.get('completado', False),
-            'toques_exitosos': result.get('toques_exitosos', 0)
+            'toques_exitosos': result.get('toques_exitosos', 0),
+            'cancelado': result.get('cancelado', False)
         })
     
     # ==================== PRIVATE LOGIC METHODS ====================
@@ -720,6 +742,11 @@ class HardwareBridge(QObject):
         # Button handlers
         def handle_touch(success: bool):
             """Handle touch button press."""
+            # Ignore if already completed
+            if self._touch_count >= self._touch_required:
+                app_logger.debug(f"⚠️ Ignoring touch after completion (count: {self._touch_count})")
+                return
+            
             if success:
                 self._touch_count += 1
                 app_logger.info(f"✅ Touch {self._touch_count}/{self._touch_required} - SUCCESS")
@@ -747,6 +774,11 @@ class HardwareBridge(QObject):
                 app_logger.info(f"🎉 Capture completed: {self._touch_count} successful touches")
                 status_label.setText("🎉 ¡Captura completada exitosamente!")
                 status_label.setStyleSheet("font-size: 12pt; padding: 15px; color: #10b981; font-weight: bold;")
+                
+                # Disable buttons to prevent additional clicks
+                btn_verdadero.setEnabled(False)
+                btn_falso.setEnabled(False)
+                btn_cancelar.setText("Cerrar")
                 
                 # Close dialog after 1 second
                 from PySide6.QtCore import QTimer
