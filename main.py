@@ -79,22 +79,14 @@ class ThorDesktopAgent:
         # Initialize session manager
         self.session_manager = SessionManager(self.ws_manager, self.system_tray)
         
-        # Initialize WebSocket event handler
+        # Initialize WebSocket event handler (solo para notificaciones)
         self.ws_event_handler = WebSocketEventHandler(self.ws_manager, self.system_tray)
-        self.ws_event_handler.on_fingerprint_enroll = self._on_fingerprint_enroll
+        # NO conectar enrollment - ahora es directo vía QWebChannel
         
-        # Initialize WebView manager
-        self.webview_manager = WebViewManager(self.ws_manager, self.system_tray)
+        # Initialize WebView manager (WebSocket es opcional, solo notificaciones)
+        self.webview_manager = WebViewManager(None, self.system_tray)  # None = sin WebSocket
         
         app_logger.debug("All components initialized")
-    
-    def _on_fingerprint_enroll(self, enrollment_data: dict):
-        """Handle fingerprint enrollment request.
-        
-        Args:
-            enrollment_data: Enrollment data from Heimdall
-        """
-        self.webview_manager.handle_enrollment_request(enrollment_data)
     
     def _on_show_requested(self):
         """Handle show window request from system tray."""

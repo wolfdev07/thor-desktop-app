@@ -31,46 +31,51 @@ Thor es una aplicación de escritorio basada en **Qt WebEngine** (Chromium) que 
 
 ---
 
-## 🏗️ Nueva Arquitectura
+## 🏗️ Nueva Arquitectura (Comunicación Directa)
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Thor Desktop Agent                    │
-│                  (PySide6 + QWebEngine)                  │
-├─────────────────────────────────────────────────────────┤
-│                                                          │
-│  ┌────────────────────────────────────────────────┐    │
-│  │         QWebEngineView (Chromium)              │    │
-│  │   ┌────────────────────────────────────────┐   │    │
-│  │   │   Django App (localhost:8000)         │   │    │
-│  │   │   • Login UI                          │   │    │
-│  │   │   • Enrollment Modal                  │   │    │
-│  │   │   • Dashboard                         │   │    │
-│  │   │   • Members Management                │   │    │
-│  │   └────────────────────────────────────────┘   │    │
-│  │              ▲                  │               │    │
-│  │              │ QWebChannel      │               │    │
-│  │              │ (Memory)         ▼               │    │
-│  │   ┌────────────────────────────────────────┐   │    │
-│  │   │     Hardware Bridge (Python)          │   │    │
-│  │   │  • iniciar_enrollment()               │   │    │
-│  │   │  • registrar_toque()                  │   │    │
-│  │   │  • verificar_huella()                 │   │    │
-│  │   │  • signals: progress, completed       │   │    │
-│  │   └────────────────────────────────────────┘   │    │
-│  └────────────────────────────────────────────────┘    │
-│                                                          │
-│  ┌───────────────┐  ┌──────────────┐  ┌─────────────┐ │
-│  │ WebSocket     │  │  SQLite DB   │  │ System Tray │ │
-│  │ Manager       │  │  (Encrypted) │  │             │ │
-│  │ (Heimdall)    │  │              │  │             │ │
-│  └───────────────┘  └──────────────┘  └─────────────┘ │
-│                                                          │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    Thor Desktop Agent                        │
+│                  (PySide6 + QWebEngine)                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────────────────────────────────────────┐      │
+│  │         QWebEngineView (Chromium)                │      │
+│  │   ┌──────────────────────────────────────────┐   │      │
+│  │   │   Django App (localhost:8000)           │   │      │
+│  │   │   • Login UI                            │   │      │
+│  │   │   • Enrollment UI (JavaScript)          │   │      │
+│  │   │   • Dashboard                           │   │      │
+│  │   │   • Members Management                  │   │      │
+│  │   └──────────────────────────────────────────┘   │      │
+│  │              ▲                  │                 │      │
+│  │              │ QWebChannel      │                 │      │
+│  │              │ (Direct Memory)  ▼                 │      │
+│  │   ┌──────────────────────────────────────────┐   │      │
+│  │   │   HardwareBridge (Python @Slot)         │   │      │
+│  │   │  ✅ iniciar_enrollment()                │   │      │
+│  │   │  ✅ registrar_toque()                   │   │      │
+│  │   │  ✅ verificar_huella()                  │   │      │
+│  │   │  ✅ test_modal_nativo()                 │   │      │
+│  │   │  📡 Signals: progress, completed        │   │      │
+│  │   └──────────────────────────────────────────┘   │      │
+│  └──────────────────────────────────────────────────┘      │
+│                                                              │
+│  ┌───────────────┐  ┌──────────────┐  ┌─────────────┐     │
+│  │ WebSocket     │  │  SQLite DB   │  │ System Tray │     │
+│  │ (Opcional)    │  │  (Encrypted) │  │             │     │
+│  │ Notificaciones│  │              │  │             │     │
+│  └───────────────┘  └──────────────┘  └─────────────┘     │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
          │                    │                   │
          ▼                    ▼                   ▼
     Heimdall WS         Valhalla API         ZKTeco SDK
-    (ws://8080)       (http://8000)          (Futuro)
+   (Notificaciones)   (Autenticación)        (Futuro)
+
+⚡ COMUNICACIÓN DIRECTA: JavaScript ↔ QWebChannel ↔ Python
+   NO WebSocket intermediario para enrollment/verificación
+   WebSocket SOLO para notificaciones push (opcional)
 ```
 
 ### Estructura del Proyecto

@@ -210,29 +210,55 @@ class MainWebView(QMainWindow):
             app_logger.debug(f"📊 Loading progress: {progress}%")
     
     def _inject_qwebchannel_script(self):
-        """Inject QWebChannel JavaScript library."""
-        # Qt provides qwebchannel.js - we need to make it available to the page
-        qwebchannel_script = """
-        // QWebChannel initialization
+        """Initialize QWebChannel bridge (script already loaded by Django base.html)."""
+        init_script = """
         (function() {
-            if (typeof qt !== 'undefined' && qt.webChannelTransport) {
-                new QWebChannel(qt.webChannelTransport, function(channel) {
-                    window.backend = channel.objects.backend;
-                    console.log("✅ Hardware bridge connected:", window.backend);
-                    
-                    // Notify page that bridge is ready
-                    window.dispatchEvent(new CustomEvent('thor-bridge-ready', {
-                        detail: { backend: window.backend }
-                    }));
-                });
-            } else {
-                console.warn("⚠️ QWebChannel not available - running without hardware bridge");
+            // Verify QWebChannel is loaded (from Django's base.html)
+            if (typeof QWebChannel !== 'function') {
+                console.error('[Thor] ❌ QWebChannel not loaded - ensure base.html has qrc:///qtwebchannel/qwebchannel.js');
+                return;
             }
+            
+            // Verify qt transport is available
+            if (typeof qt === 'undefined' || !qt.webChannelTransport) {
+                console.warn('[Thor] ⚠️ qt.webChannelTransport not available - running outside Thor');
+                return;
+            }
+            
+            console.log('[Thor] 🔌 Initializing bridge...');
+            
+            // Initialize QWebChannel
+            new QWebChannel(qt.webChannelTransport, function(channel) {
+                window.thorBridge = channel.objects.backend;
+                
+                console.log('[Thor] ✅ Bridge connected');
+                console.log('[Thor] 📱 Device ID:', window.thorBridge.device_id);
+                console.log('[Thor] 📦 Version:', window.thorBridge.version);
+                
+                // Dispatch thor-ready event on BOTH window and document
+                var eventDetail = {
+                    detail: { 
+                        bridge: window.thorBridge,
+                        deviceId: window.thorBridge.device_id,
+                        version: window.thorBridge.version
+                    },
+                    bubbles: true,
+                    cancelable: false
+                };
+                
+                var windowEvent = new CustomEvent('thor-ready', eventDetail);
+                var documentEvent = new CustomEvent('thor-ready', eventDetail);
+                
+                window.dispatchEvent(windowEvent);
+                document.dispatchEvent(documentEvent);
+                
+                console.log('[Thor] 📡 thor-ready event dispatched');
+            });
         })();
         """
         
-        self.custom_page.runJavaScript(qwebchannel_script)
-        app_logger.debug("💉 QWebChannel script injected")
+        self.custom_page.runJavaScript(init_script)
+        app_logger.debug("🔌 QWebChannel initialization executed")
     
     def navigate_to(self, path: str):
         """

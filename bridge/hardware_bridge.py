@@ -23,7 +23,6 @@ from core.database import database, FingerprintEnrollment
 from utils.keyring_manager import keyring_manager
 from config.constants import KEY_DEVICE_ID
 
-
 class HardwareBridge(QObject):
     """
     Bridge between JavaScript (Django web app) and Python (local hardware).
@@ -38,6 +37,7 @@ class HardwareBridge(QObject):
     enrollment_cancelled = Signal(str)  # (member_number)
     fingerprint_verified = Signal(str, bool)  # (member_number, verified)
     notification = Signal(str, str)  # (title, message)
+    touch_captured = Signal(int, bool, int)  # (touch_number, success, remaining)
     
     def __init__(self, ws_manager=None):
         """
@@ -49,24 +49,28 @@ class HardwareBridge(QObject):
         super().__init__()
         self.ws_manager = ws_manager
         self._current_enrollment = None  # Stores active enrollment data
-        self._device_id = None
+        self._touch_dialog = None  # Modal for touch capture
+        self._touch_count = 0  # Current successful touches
+        self._touch_required = 4  # Required successful touches
+        
+        # Cache immutable properties at init to make them constant for Qt
+        from config.constants import APP_VERSION
+        self._device_id = keyring_manager.get(KEY_DEVICE_ID) or str(uuid.uuid4())
+        self._version = APP_VERSION
         
         app_logger.info("🌉 Hardware Bridge initialized")
     
     # ==================== PROPERTIES ====================
     
-    @Property(str)
+    @Property(str, constant=True)
     def device_id(self) -> str:
-        """Get device ID (read-only property for JS)."""
-        if not self._device_id:
-            self._device_id = keyring_manager.get(KEY_DEVICE_ID) or "unknown"
+        """Get device ID (read-only constant property for JS)."""
         return self._device_id
     
-    @Property(str)
+    @Property(str, constant=True)
     def version(self) -> str:
-        """Get application version."""
-        from config.constants import APP_VERSION
-        return APP_VERSION
+        """Get application version (read-only constant property for JS)."""
+        return self._version
     
     # ==================== FINGERPRINT ENROLLMENT ====================
     
@@ -329,7 +333,7 @@ class HardwareBridge(QObject):
         JavaScript usage:
             backend.mostrar_notificacion("Title", "Message");
         """
-        app_logger.info(f"📢 Notification: {title} - {message}")
+        app_logger.info(f"📢 Notificbrebeation: {title} - {message}")
         self.notification.emit(title, message)
     
     @Slot(result=str)
@@ -358,3 +362,417 @@ class HardwareBridge(QObject):
             backend.log_debug("Something happened in JS");
         """
         app_logger.debug(f"🌐 [WebView] {message}")
+    
+    # ==================== TEST METHODS ====================
+    
+    @Slot(str, result=str)
+    def test_modal_nativo(self, mensaje: str = "¡Comunicación exitosa!") -> str:
+        """
+        Show native Qt modal for testing (called from JavaScript).
+        
+        Args:
+            mensaje: Message to display in modal
+            
+        Returns:
+            JSON string with result
+            
+        JavaScript usage:
+            backend.test_modal_nativo("Test message", function(resultJson) {
+                const result = JSON.parse(resultJson);
+                console.log(result);
+            });
+        """
+        import json
+        from PySide6.QtWidgets import QMessageBox
+        
+        app_logger.info(f"🧪 Test modal triggered: {mensaje}")
+        
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setWindowTitle("✅ Thor Desktop Agent - Test de Comunicación")
+        msg_box.setText(mensaje)
+        msg_box.setInformativeText(
+            f"🔗 Bridge conectado correctamente\n"
+            f"🖥️  Device ID: {self.device_id[:16]}...\n"
+            f"📦 Version: {self.version}"
+        )
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        
+        result = msg_box.exec()
+        
+        return json.dumps({
+            'success': True,
+            'message': mensaje,
+            'device_id': self.device_id,
+            'version': self.version,
+            'clicked': 'OK'
+        })
+    
+    @Slot(str, str, result=str)
+    def test_confirmacion(self, titulo: str, pregunta: str) -> str:
+        """
+        Show Yes/No confirmation dialog (called from JavaScript).
+        
+        Args:
+            titulo: Dialog title
+            pregunta: Question to ask
+            
+        Returns:
+            JSON string with result (clicked: 'Yes' or 'No')
+            
+        JavaScript usage:
+            backend.test_confirmacion("Title", "Question?", function(resultJson) {
+                const result = JSON.parse(resultJson);
+                if (result.clicked === 'Yes') { ... }
+            });
+        """
+        import json
+        from PySide6.QtWidgets import QMessageBox
+        
+        app_logger.info(f"🧪 Test confirmation: {titulo} - {pregunta}")
+        
+        reply = QMessageBox.question(
+            None,
+            titulo,
+            pregunta,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        clicked = 'Yes' if reply == QMessageBox.StandardButton.Yes else 'No'
+        
+        return json.dumps({
+            'success': True,
+            'clicked': clicked,
+            'titulo': titulo,
+            'pregunta': pregunta
+        })
+    
+    @Slot(str, result=str)
+    def test_input(self, prompt: str) -> str:
+        """
+        Show text input dialog (called from JavaScript).
+        
+        Args:
+            prompt: Input prompt text
+            
+        Returns:
+            JSON string with result (value: user input or empty string)
+            
+        JavaScript usage:
+            backend.test_input("Enter your name:", function(resultJson) {
+                const result = JSON.parse(resultJson);
+                console.log('User entered:', result.value);
+            });
+        """
+        import json
+        from PySide6.QtWidgets import QInputDialog
+        
+        app_logger.info(f"🧪 Test input: {prompt}")
+        
+        text, ok = QInputDialog.getText(None, "Thor Desktop Agent", prompt)
+        
+        return json.dumps({
+            'success': ok,
+            'value': text if ok else '',
+            'prompt': prompt
+        })
+    
+    @Slot(int, result=str)
+    def iniciar_captura_toques(self, toques_requeridos: int = 4) -> str:
+        """
+        Start touch capture with modal showing True/False buttons.
+        
+        Modal remains open until required successful touches are completed.
+        Emits touch_captured signal after each button press.
+        
+        Args:
+            toques_requeridos: Number of successful touches required (default: 4)
+            
+        Returns:
+            JSON string with initialization result
+            
+        JavaScript usage:
+            // Listen to touch events
+            backend.touch_captured.connect(function(touch_number, success, remaining) {
+                console.log('Touch', touch_number, 'Success:', success, 'Remaining:', remaining);
+            });
+            
+            // Start capture
+            backend.iniciar_captura_toques(4, function(resultJson) {
+                const result = JSON.parse(resultJson);
+                console.log('Capture started:', result);
+            });
+        """
+        import json
+        
+        if self._touch_dialog is not None:
+            return json.dumps({
+                'success': False,
+                'error': 'Ya hay una captura en progreso'
+            })
+        
+        self._touch_required = toques_requeridos
+        self._touch_count = 0
+        
+        # Show modal and start capture
+        result = self._show_touch_capture_dialog()
+        
+        return json.dumps({
+            'success': result['success'],
+            'toques_requeridos': self._touch_required,
+            'completado': result.get('completado', False),
+            'toques_exitosos': result.get('toques_exitosos', 0)
+        })
+    
+    # ==================== PRIVATE LOGIC METHODS ====================
+    
+    def _show_test_modal(self, mensaje: str) -> dict:
+        """
+        Internal logic for showing test modal.
+        
+        Args:
+            mensaje: Message to display
+            
+        Returns:
+            dict with result data
+        """
+        from PySide6.QtWidgets import QMessageBox
+        
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setWindowTitle("✅ Thor Desktop Agent - Test de Comunicación")
+        msg_box.setText(mensaje)
+        msg_box.setInformativeText(
+            f"🔗 Bridge conectado correctamente\n"
+            f"🖥️  Device ID: {self.device_id[:16]}...\n"
+            f"📦 Version: {self.version}"
+        )
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        
+        msg_box.exec()
+        
+        return {
+            'success': True,
+            'message': mensaje,
+            'device_id': self.device_id,
+            'version': self.version,
+            'clicked': 'OK'
+        }
+    
+    def _show_confirmation_dialog(self, titulo: str, pregunta: str) -> dict:
+        """
+        Internal logic for showing confirmation dialog.
+        
+        Args:
+            titulo: Dialog title
+            pregunta: Question text
+            
+        Returns:
+            dict with result data
+        """
+        from PySide6.QtWidgets import QMessageBox
+        
+        reply = QMessageBox.question(
+            None,
+            titulo,
+            pregunta,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        clicked = 'Yes' if reply == QMessageBox.StandardButton.Yes else 'No'
+        
+        return {
+            'success': True,
+            'clicked': clicked,
+            'titulo': titulo,
+            'pregunta': pregunta
+        }
+    
+    def _show_input_dialog(self, prompt: str) -> dict:
+        """
+        Internal logic for showing input dialog.
+        
+        Args:
+            prompt: Input prompt text
+            
+        Returns:
+            dict with result data
+        """
+        from PySide6.QtWidgets import QInputDialog
+        
+        text, ok = QInputDialog.getText(None, "Thor Desktop Agent", prompt)
+        
+        return {
+            'success': ok,
+            'value': text if ok else '',
+            'prompt': prompt
+        }
+    
+    def _show_touch_capture_dialog(self) -> dict:
+        """
+        Internal logic for showing touch capture dialog with True/False buttons.
+        
+        Shows a persistent modal that remains open until required touches are captured.
+        Emits touch_captured signal after each button press.
+        
+        Returns:
+            dict with capture result
+        """
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QProgressBar
+        from PySide6.QtCore import Qt
+        
+        app_logger.info(f"🖐️ Starting touch capture: {self._touch_required} touches required")
+        
+        # Create custom dialog
+        dialog = QDialog()
+        dialog.setWindowTitle("🖐️ Captura de Toques - Thor Desktop Agent")
+        dialog.setModal(True)
+        dialog.setMinimumWidth(500)
+        dialog.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint)
+        
+        # Layout
+        layout = QVBoxLayout()
+        
+        # Title label
+        title_label = QLabel(f"<h2>Captura de Toques Biométricos</h2>")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title_label)
+        
+        # Progress label
+        progress_label = QLabel(f"<b>Progreso:</b> 0 / {self._touch_required} toques exitosos")
+        progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        progress_label.setStyleSheet("font-size: 14pt; padding: 10px;")
+        layout.addWidget(progress_label)
+        
+        # Progress bar
+        progress_bar = QProgressBar()
+        progress_bar.setMaximum(self._touch_required)
+        progress_bar.setValue(0)
+        progress_bar.setTextVisible(True)
+        progress_bar.setFormat("%v / %m toques")
+        layout.addWidget(progress_bar)
+        
+        # Status label
+        status_label = QLabel("Esperando toque...")
+        status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        status_label.setStyleSheet("font-size: 12pt; padding: 15px; color: #666;")
+        layout.addWidget(status_label)
+        
+        # Buttons layout
+        button_layout = QHBoxLayout()
+        
+        # True button
+        btn_verdadero = QPushButton("✅ VERDADERO\n(Toque Exitoso)")
+        btn_verdadero.setMinimumHeight(80)
+        btn_verdadero.setStyleSheet("""
+            QPushButton {
+                background-color: #10b981;
+                color: white;
+                font-size: 14pt;
+                font-weight: bold;
+                border-radius: 10px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #059669;
+            }
+            QPushButton:pressed {
+                background-color: #047857;
+            }
+        """)
+        
+        # False button
+        btn_falso = QPushButton("❌ FALSO\n(Toque Fallido)")
+        btn_falso.setMinimumHeight(80)
+        btn_falso.setStyleSheet("""
+            QPushButton {
+                background-color: #ef4444;
+                color: white;
+                font-size: 14pt;
+                font-weight: bold;
+                border-radius: 10px;
+                padding: 10px;
+            }
+            QPushButton:hover {
+                background-color: #dc2626;
+            }
+            QPushButton:pressed {
+                background-color: #b91c1c;
+            }
+        """)
+        
+        button_layout.addWidget(btn_verdadero)
+        button_layout.addWidget(btn_falso)
+        layout.addLayout(button_layout)
+        
+        # Cancel button
+        btn_cancelar = QPushButton("Cancelar")
+        btn_cancelar.setStyleSheet("padding: 10px; font-size: 11pt;")
+        layout.addWidget(btn_cancelar)
+        
+        dialog.setLayout(layout)
+        
+        # Store dialog reference
+        self._touch_dialog = dialog
+        
+        # Button handlers
+        def handle_touch(success: bool):
+            """Handle touch button press."""
+            if success:
+                self._touch_count += 1
+                app_logger.info(f"✅ Touch {self._touch_count}/{self._touch_required} - SUCCESS")
+            else:
+                app_logger.info(f"❌ Touch attempt - FAILED")
+            
+            remaining = self._touch_required - self._touch_count
+            
+            # Update UI
+            progress_bar.setValue(self._touch_count)
+            progress_label.setText(f"<b>Progreso:</b> {self._touch_count} / {self._touch_required} toques exitosos")
+            
+            if success:
+                status_label.setText(f"✅ Toque exitoso! Faltan {remaining} más")
+                status_label.setStyleSheet("font-size: 12pt; padding: 15px; color: #10b981; font-weight: bold;")
+            else:
+                status_label.setText(f"❌ Toque fallido. Intenta de nuevo ({remaining} restantes)")
+                status_label.setStyleSheet("font-size: 12pt; padding: 15px; color: #ef4444; font-weight: bold;")
+            
+            # Emit signal to JavaScript
+            self.touch_captured.emit(self._touch_count, success, remaining)
+            
+            # Check if completed
+            if self._touch_count >= self._touch_required:
+                app_logger.info(f"🎉 Capture completed: {self._touch_count} successful touches")
+                status_label.setText("🎉 ¡Captura completada exitosamente!")
+                status_label.setStyleSheet("font-size: 12pt; padding: 15px; color: #10b981; font-weight: bold;")
+                
+                # Close dialog after 1 second
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(1000, dialog.accept)
+        
+        def handle_cancel():
+            """Handle cancel button."""
+            app_logger.info("❌ Touch capture cancelled by user")
+            dialog.reject()
+        
+        # Connect buttons
+        btn_verdadero.clicked.connect(lambda: handle_touch(True))
+        btn_falso.clicked.connect(lambda: handle_touch(False))
+        btn_cancelar.clicked.connect(handle_cancel)
+        
+        # Show dialog (blocks until closed)
+        result = dialog.exec()
+        
+        # Cleanup
+        self._touch_dialog = None
+        completed = result == QDialog.DialogCode.Accepted
+        
+        return {
+            'success': True,
+            'completado': completed,
+            'toques_exitosos': self._touch_count,
+            'toques_requeridos': self._touch_required,
+            'cancelado': not completed
+        }

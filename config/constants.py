@@ -1,5 +1,9 @@
 """Application constants."""
 
+# Application Info
+APP_VERSION = "1.0.0"
+APP_NAME = "Thor Desktop Agent"
+
 # User Types (must match backend)
 USER_TYPE_OWNER = 0
 USER_TYPE_MANAGER = 1
