@@ -28,9 +28,8 @@ sqlcipher3==0.6.2
 # JWT
 PyJWT==2.10.1
 
-# ZKTeco Library (para futuro)
-zklib==0.1.1
-pyzkaccess==1.1
+# ZKTeco Fingerprint Reader (pyzkfp wraps official SDK)
+pyzkfp
 
 # Utilities
 python-dotenv==1.2.1

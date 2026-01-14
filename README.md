@@ -1,4 +1,4 @@
-# Thor Desktop Agent 🔨
+# Thor Desktop Agent (Stormbreaker Version)🔨
 
 **Agente de escritorio híbrido web-nativo para gestión de gimnasios con control biométrico.**
 
@@ -26,8 +26,11 @@ Thor es una aplicación de escritorio basada en **Qt WebEngine** (Chromium) que 
 - ✅ **Redis Pub/Sub** - Broadcasting multi-dispositivo
 
 ### 🖐️ Biometría
-- ✅ **Simulación 4-touch** - Enrollment de prueba (Verdadero/Falso)
-- 🔜 **ZKTeco SDK** - Integración con lectores físicos (9500, Live 20R)
+- ✅ **ZKTeco ZK9500 Integration** - Lector de huellas USB (producción)
+- ✅ **4-touch enrollment** - Captura real de huellas con evaluación de calidad
+- ✅ **Template consolidation** - Algoritmo de combinación de múltiples capturas
+- ✅ **Verification** - Comparación de huellas con templates guardados
+- 🔧 **Simulación 4-touch** - Modal de prueba (Verdadero/Falso) para desarrollo
 
 ---
 

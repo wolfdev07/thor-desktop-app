@@ -17,11 +17,12 @@ Usage in JavaScript:
 import asyncio
 import uuid
 from typing import Optional, Dict, Any
-from PySide6.QtCore import QObject, Signal, Slot, Property
+from PySide6.QtCore import QObject, Signal, Slot, Property, QTimer
 from utils.logger import app_logger
 from core.database import database, FingerprintEnrollment
 from utils.keyring_manager import keyring_manager
 from config.constants import KEY_DEVICE_ID
+from bridge.zkteco_reader import get_reader
 
 class HardwareBridge(QObject):
     """
@@ -49,9 +50,13 @@ class HardwareBridge(QObject):
         super().__init__()
         self.ws_manager = ws_manager
         self._current_enrollment = None  # Stores active enrollment data
-        self._touch_dialog = None  # Modal for touch capture
+        self._touch_dialog = None  # Modal for touch capture (legacy)
         self._touch_count = 0  # Current successful touches
         self._touch_required = 4  # Required successful touches
+        
+        # ZKTeco fingerprint reader
+        self._reader = get_reader()
+        self._enrollment_in_progress = False
         
         # Cache immutable properties at init to make them constant for Qt
         from config.constants import APP_VERSION
@@ -59,6 +64,9 @@ class HardwareBridge(QObject):
         self._version = APP_VERSION
         
         app_logger.info("🌉 Hardware Bridge initialized")
+        
+        # Try to connect to fingerprint reader on startup
+        QTimer.singleShot(1000, self._connect_fingerprint_reader)
     
     # ==================== PROPERTIES ====================
     
@@ -481,10 +489,10 @@ class HardwareBridge(QObject):
     @Slot(int, result=str)
     def iniciar_captura_toques(self, toques_requeridos: int = 4) -> str:
         """
-        Start touch capture with modal showing True/False buttons.
+        Start fingerprint enrollment using ZKTeco ZK9500 reader.
         
-        Modal remains open until required successful touches are completed.
-        Emits touch_captured signal after each button press.
+        Replaces the old modal with True/False buttons. Now uses actual hardware
+        to capture fingerprints. Emits touch_captured signal after each capture.
         
         Args:
             toques_requeridos: Number of successful touches required (default: 4)
@@ -506,18 +514,18 @@ class HardwareBridge(QObject):
         """
         import json
         
-        # Check if dialog already open (prevent multiple calls)
-        if self._touch_dialog is not None:
-            app_logger.warning("⚠️ Touch capture dialog already open, rejecting duplicate request")
+        # Check if enrollment already in progress
+        if self._enrollment_in_progress:
+            app_logger.warning("⚠️ Enrollment already in progress, rejecting duplicate request")
             return json.dumps({
                 'success': False,
                 'error': 'Ya hay una captura en progreso'
             })
         
-        # Check if enrollment is in progress (conflict prevention)
+        # Check if legacy enrollment is in progress (conflict prevention)
         if self._current_enrollment is not None:
             app_logger.warning(
-                f"⚠️ Cannot start touch capture: enrollment in progress for "
+                f"⚠️ Cannot start capture: enrollment in progress for "
                 f"{self._current_enrollment.get('member_number')}"
             )
             return json.dumps({
@@ -525,27 +533,98 @@ class HardwareBridge(QObject):
                 'error': 'Hay un enrollment en progreso. Por favor cancela primero.'
             })
         
-        app_logger.info(f"🖐️ Touch capture requested: {toques_requeridos} touches")
+        # Check if reader is connected
+        if not self._reader.is_connected:
+            app_logger.error("❌ ZKTeco reader not connected")
+            # Try to connect
+            if not self._reader.connect():
+                return json.dumps({
+                    'success': False,
+                    'error': 'No se pudo conectar al lector de huellas. Verifique la conexión USB.'
+                })
+        
+        app_logger.info(f"🖐️ Starting ZKTeco enrollment: {toques_requeridos} touches required")
         
         self._touch_required = toques_requeridos
         self._touch_count = 0
+        self._enrollment_in_progress = True
         
-        # Show modal and start capture (BLOCKING - will return when dialog closes)
-        result = self._show_touch_capture_dialog()
-        
-        app_logger.info(
-            f"🏁 Touch capture finished: "
-            f"{'✅ Completed' if result.get('completado') else '❌ Cancelled'} "
-            f"({result.get('toques_exitosos', 0)}/{toques_requeridos} touches)"
-        )
+        # Start enrollment in background thread to prevent UI blocking
+        # Use QTimer to call enrollment on main thread
+        QTimer.singleShot(100, lambda: self._run_zkteco_enrollment(toques_requeridos))
         
         return json.dumps({
-            'success': result['success'],
-            'toques_requeridos': self._touch_required,
-            'completado': result.get('completado', False),
-            'toques_exitosos': result.get('toques_exitosos', 0),
-            'cancelado': result.get('cancelado', False)
+            'success': True,
+            'toques_requeridos': toques_requeridos,
+            'device': 'ZKTeco ZK9500',
+            'message': 'Preparando lector de huellas. Espere la luz verde...'
         })
+    
+    def _run_zkteco_enrollment(self, toques_requeridos: int):
+        """
+        Run ZKTeco enrollment process (internal method).
+        
+        This runs the actual hardware capture and emits signals for each touch.
+        """
+        app_logger.info(f"🚀 Starting ZKTeco enrollment process...")
+        
+        def progress_callback(touch_number: int, success: bool, remaining: int):
+            """Called after each touch capture."""
+            app_logger.info(
+                f"{'✅' if success else '❌'} Touch {touch_number}/{toques_requeridos} - "
+                f"{'SUCCESS' if success else 'FAILED'} | Remaining: {remaining}"
+            )
+            
+            # Emit signal to JavaScript
+            self.touch_captured.emit(touch_number, success, remaining)
+            
+            # Process Qt events to keep UI responsive
+            from PySide6.QtCore import QCoreApplication
+            QCoreApplication.processEvents()
+        
+        try:
+            # Run enrollment (blocking until complete or cancelled)
+            success, template = self._reader.enroll_fingerprint(
+                progress_callback=progress_callback,
+                required_touches=toques_requeridos,
+                quality_threshold=50  # Minimum quality to accept
+            )
+            
+            if success and template:
+                app_logger.info(f"🎉 ZKTeco enrollment completed successfully")
+                
+                # Store template for later use (when saving to member)
+                self._last_enrollment_template = template
+                
+                # Emit completion signal (touch_captured with final success)
+                self.touch_captured.emit(toques_requeridos, True, 0)
+                
+                self.notification.emit(
+                    "✅ Registro Exitoso",
+                    f"Se capturaron {toques_requeridos} huellas correctamente"
+                )
+            else:
+                app_logger.warning("❌ ZKTeco enrollment failed or cancelled")
+                
+                self.notification.emit(
+                    "❌ Registro Fallido",
+                    "No se pudo completar el registro de huella"
+                )
+        
+        except Exception as e:
+            app_logger.error(f"❌ Error during ZKTeco enrollment: {e}")
+            
+            self.notification.emit(
+                "❌ Error",
+                f"Error en el lector de huellas: {str(e)}"
+            )
+        
+        finally:
+            # Reset state
+            self._enrollment_in_progress = False
+            self._touch_count = 0
+            
+            app_logger.info("🏁 ZKTeco enrollment process finished")
     
     # ==================== PRIVATE LOGIC METHODS ====================
     
@@ -808,3 +887,84 @@ class HardwareBridge(QObject):
             'toques_requeridos': self._touch_required,
             'cancelado': not completed
         }
+    
+    # ==================== ZKTECO READER METHODS ====================
+    
+    def _connect_fingerprint_reader(self):
+        """Connect to ZKTeco fingerprint reader on startup."""
+        app_logger.info("🔌 Attempting to connect to ZKTeco ZK9500 reader...")
+        
+        if self._reader.connect(timeout=5):
+            app_logger.info("✅ ZKTeco reader connected successfully")
+            
+            # Get device info
+            info = self._reader.get_device_info()
+            app_logger.info(f"📱 Device info: {info}")
+            
+            self.notification.emit(
+                "Lector de Huellas",
+                "ZKTeco ZK9500 conectado y listo"
+            )
+        else:
+            app_logger.warning(
+                "⚠️ Could not connect to ZKTeco reader on startup. "
+                "Will retry when enrollment starts."
+            )
+    
+    @Slot(result=str)
+    def reconnect_reader(self) -> str:
+        """
+        Manually reconnect to fingerprint reader (callable from JavaScript).
+        
+        Returns:
+            JSON string with connection result
+        """
+        import json
+        
+        app_logger.info("🔄 Manual reconnection requested...")
+        
+        # Disconnect first if already connected
+        if self._reader.is_connected:
+            self._reader.disconnect()
+        
+        # Try to connect
+        if self._reader.connect(timeout=5):
+            info = self._reader.get_device_info()
+            
+            return json.dumps({
+                'success': True,
+                'connected': True,
+                'device_info': info,
+                'message': 'Lector conectado correctamente'
+            })
+        else:
+            return json.dumps({
+                'success': False,
+                'connected': False,
+                'error': 'No se pudo conectar al lector de huellas',
+                'message': 'Verifique que el lector esté conectado por USB'
+            })
+    
+    @Slot(result=str)
+    def get_reader_status(self) -> str:
+        """
+        Get fingerprint reader status (callable from JavaScript).
+        
+        Returns:
+            JSON string with reader status
+        """
+        import json
+        
+        if self._reader.is_connected:
+            info = self._reader.get_device_info()
+            return json.dumps({
+                'connected': True,
+                'device_info': info,
+                'enrollment_in_progress': self._enrollment_in_progress
+            })
+        else:
+            return json.dumps({
+                'connected': False,
+                'error': 'Reader not connected',
+                'enrollment_in_progress': self._enrollment_in_progress
+            })
