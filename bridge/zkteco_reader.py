@@ -1,9 +1,4 @@
-"""
-ZKTeco ZK9500 Fingerprint Reader Integration
-
-Handles communication with ZKTeco fingerprint scanner for enrollment and verification.
-Uses zklib library for USB communication with the device.
-"""
+#ZKTeco ZK9500 Fingerprint Reader Integration
 
 import time
 from typing import Optional, List, Tuple, Callable
@@ -12,10 +7,10 @@ from utils.logger import app_logger
 try:
     from pyzkfp import ZKFP2
     ZKFP_AVAILABLE = True
-    app_logger.info("✅ pyzkfp library loaded successfully")
+    app_logger.info("pyzkfp library loaded successfully")
 except ImportError:
     ZKFP_AVAILABLE = False
-    app_logger.warning("⚠️ pyzkfp not available - fingerprint scanner will not work")
+    app_logger.warning("pyzkfp not available - fingerprint scanner will not work")
 
 
 class ZKTecoReader:
@@ -36,7 +31,7 @@ class ZKTecoReader:
         self._current_templates: List[bytes] = []
         self._registered_fingers = {}  # Dictionary to store finger_id: template
         
-        app_logger.info("🔧 ZKTeco Reader initialized (not connected)")
+        app_logger.info("ZKTeco Reader initialized (not connected)")
     
     def connect(self, timeout: int = 5) -> bool:
         """
@@ -49,17 +44,17 @@ class ZKTecoReader:
             True if connected successfully, False otherwise
         """
         if not ZKFP_AVAILABLE:
-            app_logger.error("❌ Cannot connect: pyzkfp not installed")
-            app_logger.info("💡 Install with: pip install pyzkfp")
-            app_logger.info("💡 Also install ZKFinger SDK from ZKTeco website")
+            app_logger.error("Cannot connect: pyzkfp not installed")
+            app_logger.info("Install with: pip install pyzkfp")
+            app_logger.info("Also install ZKFinger SDK from ZKTeco website")
             return False
         
         if self.is_connected:
-            app_logger.warning("⚠️ Already connected to ZKTeco device")
+            app_logger.warning("Already connected to ZKTeco device")
             return True
         
         try:
-            app_logger.info("🔌 Connecting to ZKTeco ZK9500...")
+            app_logger.info("Connecting to ZKTeco ZK9500...")
             
             # Initialize ZKFP2
             self.zkfp2 = ZKFP2()
@@ -67,29 +62,29 @@ class ZKTecoReader:
             
             # Get device count
             device_count = self.zkfp2.GetDeviceCount()
-            app_logger.info(f"📱 Found {device_count} ZKTeco device(s)")
+            app_logger.info(f"Found {device_count} ZKTeco device(s)")
             
             if device_count == 0:
-                app_logger.error("❌ No ZKTeco devices found")
-                app_logger.info("💡 Troubleshooting:")
-                app_logger.info("   1. Check USB cable connection")
-                app_logger.info("   2. Install ZKFinger SDK from official website")
-                app_logger.info("   3. Verify device appears in Device Manager")
-                app_logger.info("   4. Try unplugging and reconnecting USB")
+                app_logger.error("No ZKTeco devices found")
+                app_logger.info("Troubleshooting:")
+                app_logger.info("1. Check USB cable connection")
+                app_logger.info("2. Install ZKFinger SDK from official website")
+                app_logger.info("3. Verify device appears in Device Manager")
+                app_logger.info("4. Try unplugging and reconnecting USB")
                 return False
             
             # Open first device
-            app_logger.info(f"🔓 Opening device 0...")
+            app_logger.info(f"Opening device 0...")
             self.zkfp2.OpenDevice(0)
             
             self.is_connected = True
-            app_logger.info("✅ Connected to ZKTeco ZK9500 successfully")
+            app_logger.info("Connected to ZKTeco ZK9500 successfully")
             
             return True
             
         except Exception as e:
-            app_logger.error(f"❌ Failed to connect to ZKTeco: {e}")
-            app_logger.info("💡 Make sure ZKFinger SDK is installed from ZKTeco website")
+            app_logger.error(f"Failed to connect to ZKTeco: {e}")
+            app_logger.info("Make sure ZKFinger SDK is installed from ZKTeco website")
             self.zkfp2 = None
             self.is_connected = False
             return False
@@ -113,11 +108,7 @@ class ZKTecoReader:
         except Exception as e:
             app_logger.error(f"Error disconnecting ZKTeco: {e}")
     
-    def capture_fingerprint(
-        self, 
-        timeout: int = 10,
-        quality_threshold: int = 50
-    ) -> Tuple[bool, Optional[bytes], int]:
+    def capture_fingerprint(self, timeout: int = 10, quality_threshold: int = 50) -> Tuple[bool, Optional[bytes], int]:
         """
         Capture a single fingerprint touch.
         
@@ -132,11 +123,11 @@ class ZKTecoReader:
             - quality_score: Quality assessment 0-100
         """
         if not self.is_connected:
-            app_logger.error("❌ Cannot capture: device not connected")
+            app_logger.error("Cannot capture: device not connected")
             return (False, None, 0)
         
         try:
-            app_logger.info(f"👆 Waiting for fingerprint touch (timeout: {timeout}s)...")
+            app_logger.info(f"Waiting for fingerprint touch (timeout: {timeout}s)...")
             
             start_time = time.time()
             
@@ -156,11 +147,11 @@ class ZKTecoReader:
                         app_logger.info(f"📸 Fingerprint captured (quality: {quality}/100)")
                         
                         if quality >= quality_threshold:
-                            app_logger.info(f"✅ Quality sufficient ({quality} >= {quality_threshold})")
+                            app_logger.info(f"Quality sufficient ({quality} >= {quality_threshold})")
                             return (True, template, quality)
                         else:
                             app_logger.warning(
-                                f"⚠️ Quality too low ({quality} < {quality_threshold}) - rejected"
+                                f"Quality too low ({quality} < {quality_threshold}) - rejected"
                             )
                             return (False, template, quality)
                     
@@ -173,19 +164,14 @@ class ZKTecoReader:
                     continue
             
             # Timeout reached
-            app_logger.warning(f"⏱️ Timeout: No fingerprint detected in {timeout}s")
+            app_logger.warning(f"Timeout: No fingerprint detected in {timeout}s")
             return (False, None, 0)
             
         except Exception as e:
-            app_logger.error(f"❌ Error capturing fingerprint: {e}")
+            app_logger.error(f"Error capturing fingerprint: {e}")
             return (False, None, 0)
     
-    def enroll_fingerprint(
-        self,
-        progress_callback: Optional[Callable[[int, bool, int], None]] = None,
-        required_touches: int = 4,
-        quality_threshold: int = 50
-    ) -> Tuple[bool, Optional[bytes]]:
+    def enroll_fingerprint(self, progress_callback: Optional[Callable[[int, bool, int], None]] = None, required_touches: int = 3, quality_threshold: int = 50) -> Tuple[bool, Optional[bytes]]:
         """
         Enroll a fingerprint by capturing multiple touches.
         
@@ -203,10 +189,10 @@ class ZKTecoReader:
             - consolidated_template: Final template data combining all touches
         """
         if not self.is_connected:
-            app_logger.error("❌ Cannot enroll: device not connected")
+            app_logger.error("Cannot enroll: device not connected")
             return (False, None)
         
-        app_logger.info(f"🖐️ Starting enrollment: {required_touches} touches required")
+        app_logger.info(f"Starting enrollment: {required_touches} touches required")
         
         self._current_templates = []
         successful_touches = 0
@@ -215,7 +201,7 @@ class ZKTecoReader:
             touch_number = successful_touches + 1
             remaining = required_touches - successful_touches
             
-            app_logger.info(f"👆 Touch {touch_number}/{required_touches} - Place finger on scanner...")
+            app_logger.info(f"Touch {touch_number}/{required_touches} - Place finger on scanner...")
             
             # Turn on light to indicate ready
             try:
@@ -224,10 +210,7 @@ class ZKTecoReader:
                 pass  # Ignore if light control not supported
             
             # Capture fingerprint
-            success, template, quality = self.capture_fingerprint(
-                timeout=15,
-                quality_threshold=quality_threshold
-            )
+            success, template, quality = self.capture_fingerprint(timeout=15, quality_threshold=quality_threshold)
             
             if success and template:
                 # Successful touch
@@ -236,7 +219,7 @@ class ZKTecoReader:
                 remaining = required_touches - successful_touches
                 
                 app_logger.info(
-                    f"✅ Touch {touch_number}/{required_touches} SUCCESS "
+                    f"Touch {touch_number}/{required_touches} SUCCESS "
                     f"(quality: {quality}) - {remaining} remaining"
                 )
                 
@@ -257,7 +240,7 @@ class ZKTecoReader:
             else:
                 # Failed touch (low quality or timeout)
                 app_logger.warning(
-                    f"❌ Touch {touch_number} FAILED "
+                    f"Touch {touch_number} FAILED "
                     f"(quality: {quality if quality else 'N/A'}) - retrying..."
                 )
                 
@@ -277,7 +260,7 @@ class ZKTecoReader:
                 time.sleep(0.5)
         
         # All touches captured - use best 3 for consolidation
-        app_logger.info(f"🎉 All {required_touches} touches captured successfully")
+        app_logger.info(f"All {required_touches} touches captured successfully")
         
         # Select best 3 templates (pyzkfp's DBMerge requires exactly 3)
         best_templates = self._current_templates[:3]  # Use first 3 for now
@@ -286,7 +269,7 @@ class ZKTecoReader:
         consolidated = self._consolidate_templates(best_templates)
         
         if consolidated:
-            app_logger.info(f"✅ Consolidated template generated")
+            app_logger.info(f"Consolidated template generated")
             
             # Turn off light
             try:
@@ -296,15 +279,10 @@ class ZKTecoReader:
             
             return (True, consolidated)
         else:
-            app_logger.error("❌ Failed to consolidate templates")
+            app_logger.error("Failed to consolidate templates")
             return (False, None)
     
-    def verify_fingerprint(
-        self,
-        enrolled_template: bytes,
-        timeout: int = 10,
-        match_threshold: int = 70
-    ) -> Tuple[bool, int]:
+    def verify_fingerprint(self, enrolled_template: bytes, timeout: int = 10, match_threshold: int = 70) -> Tuple[bool, int]:
         """
         Verify a fingerprint against an enrolled template.
         
@@ -319,7 +297,7 @@ class ZKTecoReader:
             - confidence: Match confidence score 0-100
         """
         if not self.is_connected:
-            app_logger.error("❌ Cannot verify: device not connected")
+            app_logger.error("Cannot verify: device not connected")
             return (False, 0)
         
         try:
@@ -332,7 +310,7 @@ class ZKTecoReader:
             )
             
             if not success or not captured_template:
-                app_logger.warning("⚠️ Failed to capture fingerprint for verification")
+                app_logger.warning("Failed to capture fingerprint for verification")
                 return (False, 0)
             
             # Compare captured template with enrolled template

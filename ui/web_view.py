@@ -4,7 +4,6 @@ Main WebView Window
 Qt WebEngine-based browser window that loads the Django application.
 Provides native-like experience with full hardware access via QWebChannel bridge.
 """
-
 from PySide6.QtCore import Qt, QUrl, Slot
 from PySide6.QtWidgets import QMainWindow
 from PySide6.QtWebEngineWidgets import QWebEngineView

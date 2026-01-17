@@ -28,7 +28,7 @@ HEIMDALL_WS_ENDPOINT = f"/{HEIMDALL_PREFIX}/api/{API_VERSION}/ws/desktop-agent"
 HEIMDALL_HEARTBEAT_INTERVAL = 30
 
 # Database Configuration
-DB_NAME = "thor_agent.db"
+DB_NAME = "thor.db"
 DB_PATH = DATA_DIR / DB_NAME
 
 # Security Configuration
